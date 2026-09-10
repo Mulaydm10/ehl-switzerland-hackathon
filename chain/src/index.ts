@@ -32,3 +32,10 @@ export {
   type Caller,
   type Resolution,
 } from "./ens.js";
+export {
+  ETH_COIN_TYPE,
+  evmCoinType,
+  primaryName,
+  mutualIdentity,
+  type ReverseOutcome,
+} from "./reverse.js";
