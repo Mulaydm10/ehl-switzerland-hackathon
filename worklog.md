@@ -46,3 +46,20 @@ deployed bytecode contains `initialize((address,uint256)[],bytes[])` and *not* t
 payer is USDC on Base only and cannot settle a Hedera x402, which forces the two-surface split.
 
 Next: #7 (chain, one real settlement) and #8 (core, property tests) in parallel; #9 blocked on #7.
+
+## 2026-08-31 (design node) — the docs catch up to the depth work
+
+Three credential-free depth items landed after the submission text was first written, and the
+project-facing docs still described the pre-depth project. Caught them up in one design PR:
+`RESULTS.md` gains H-4/H-5 (a settlement verified against Hedera consensus via the mirror node
+rather than against the facilitator's receipt, and the four named ways a receipt can be false),
+E-4/E-5 (an address's primary name resolved and confirmed in both directions; an address
+advertising a name it cannot back is a named outcome, not an identity), and a new M-1..M-3 block
+for our own MCP server (refusal as a successful structured result, `spend` re-authorising
+internally). `submissions/SPONSOR-DEPTH.md` flips the two `queued` rows to `used` with file
+references and adds the MCP surface in its own section, explicitly *not* under Bazantic.
+`contracts/surface.md` gains the MCP rules so the next worker in that lane is bound by them.
+
+Nothing here upgrades a blocked row. H-1/H-2 (no HBAR has moved), E-3 (no onchain ENS write) and
+B-1/B-2 (no bazantic.com account) are unchanged, and the MCP server is written down everywhere as
+ours and unregistered so it cannot be mistaken for Bazantic qualification.

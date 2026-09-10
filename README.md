@@ -3,7 +3,12 @@
 A parent agent grants a child agent a **capped, revocable spending authority**; the child pays for
 real x402-gated services with it; and when it is over budget or revoked it is **refused before any
 money moves** — with a reason it can act on. The interesting half is the refusals, so they are
-demonstrated, not described.
+demonstrated, not described. The same authority is available to an agent host as MCP tools, where a
+refusal comes back as a structured result rather than an error.
+
+Two things are checked rather than believed: a settlement is verified against Hedera consensus via
+the mirror node, not against the facilitator's receipt; and an address's ENS name must resolve back
+to the address before it counts as an identity. Both need no credentials.
 
 The project asserts nothing it does not demonstrate. Every claim in this README, the video, and the
 submission traces to a row in **`RESULTS.md`**; a row with no evidence is a claim we do not make
@@ -37,8 +42,8 @@ questions (`Q-0001` event identity, `Q-0002` thesis; `Q-0003` stack is resolved 
 | `DEMO.md` | Judge-facing demo script, kept runnable at all times |
 | `RESULTS.md` | Every public claim and the artifact backing it — empty evidence = not claimed |
 | `core/` | Lane: delegation/allowance algebra, pure — no network, no clock, no chain SDK |
-| `chain/` | Lane: Hedera x402 settlement via Blocky402, and ENS identity reads on Sepolia |
-| `surface/` | Lane: the x402-gated resource server and the browser demo |
+| `chain/` | Lane: Hedera x402 settlement via Blocky402, mirror-node verification of it, and ENS identity reads (forward, text, reverse) on Sepolia |
+| `surface/` | Lane: the x402-gated resource server, the browser demo, and the MCP server (`npm run mcp --prefix surface`) |
 | `contracts/` | Design-owned lane interfaces (`contracts/<lane>.md`) — not Solidity |
 | `GOVERNANCE.md` | Who owns what, LOCKED vs. not, audit table |
 | `design/` | ADR process + decisions (`ADR-####`) |

@@ -31,7 +31,7 @@ design: devin-ai-integration[bot]
 | `lane:canary` | `canary/` | two standing issues: post-merge canary (permanent claim, draft PR) and pre-merge canary (transient claim per workflow PR) | — |
 | `lane:core` | `core/` | the delegation + allowance algebra: grant, attenuate, consume, revoke, and the refusal decision. **No network, no SDK, no chain** — pure functions over explicit state, property-tested | `contracts/core.md` |
 | `lane:chain` | `chain/` | everything that touches a live chain: ENSv2 registration/resolution/revocation on the hackathon Sepolia deployment, and Hedera x402 settlement through Blocky402 | `contracts/chain.md` |
-| `lane:surface` | `surface/` | the paid resource server, the Bazantic gateway + MCP + Recipe registration, the CLI/demo run-through and the results table | `contracts/surface.md` |
+| `lane:surface` | `surface/` | the paid resource server, our MCP server over the grant algebra, the (unbuilt) Bazantic gateway + Recipe registration, the CLI/demo run-through and the results table | `contracts/surface.md` |
 <!-- bootstrap.sh appends one row per lane you pass it; design edits after that. A lane may be a nested path (`src/01_ingest`); no lane may be a prefix of another. -->
 
 ## Verify environment
@@ -67,6 +67,14 @@ a broken baseline. Design cannot pre-create those files: CI confines `design/*` 
 - Actions minutes are one pool per repo; check quota before a team event.
 
 ## Log
+- 2026-08-31: credential-free sponsor depth, cut from ADR-0005's post-mortem: mirror-node
+  consensus verification of a settlement (#24, `claim/23` deleted, #23 closed), ENS reverse +
+  mutual identity (#26, `claim/25` deleted, #25 closed), and an MCP server over the grant algebra
+  (#28, `status:review`). Claim ledger, `SPONSOR-DEPTH.md`, `SUBMISSION.md`, `README.md` and
+  `contracts/surface.md` caught up: H-4/H-5, E-4/E-5, M-1..M-3. **Protocol deviation to record:**
+  #24, #26 and #28 are lane PRs authored by the design node, so none had an independent reviewer
+  and the human merge was the only review. Nothing about these changes upgrades a blocked row —
+  H-1/H-2, E-3 and B-1/B-2 are untouched.
 - 2026-09-10: repo created from agent-bus-template; bootstrap run (mode=solo).
 - 2026-09-10: design node joined (issue #3). Lanes still provisional (`canary` only) — the real
   split is proposed on #3 and lands once the brief is confirmed, before the first lane claim.
