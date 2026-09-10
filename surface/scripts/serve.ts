@@ -26,13 +26,22 @@ function network(): `${string}:${string}` {
   return value as `${string}:${string}`;
 }
 
-/** The demo family: one parent, two children with equal allowances. */
+/**
+ * The demo family: one parent, two equal children, and a third child capped
+ * below the dearer route's price.
+ *
+ * `child-c`'s cap is what makes "over budget" structural rather than a matter of
+ * having spent first: 150 000 tinybar of authority cannot buy the 250 000
+ * route, ever, so the refusal is reproducible on a fresh tree by someone
+ * holding no key at all.
+ */
 function demoState(): State {
   const forever = Number.MAX_SAFE_INTEGER;
   const steps = [
     (s: State) => root(s, { id: "parent", child: "parent", limit: 1_000_000n, asset: HBAR, notBefore: 0, notAfter: forever }),
     (s: State) => grant(s, "parent", { id: "child-a", child: "agent-a", limit: 300_000n, asset: HBAR, notBefore: 0, notAfter: forever }),
     (s: State) => grant(s, "parent", { id: "child-b", child: "agent-b", limit: 300_000n, asset: HBAR, notBefore: 0, notAfter: forever }),
+    (s: State) => grant(s, "parent", { id: "child-c", child: "agent-c", limit: 150_000n, asset: HBAR, notBefore: 0, notAfter: forever }),
   ];
   let state = emptyState;
   for (const step of steps) {
