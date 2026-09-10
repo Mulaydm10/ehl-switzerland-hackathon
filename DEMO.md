@@ -22,9 +22,15 @@ On boot the server prints the facilitator's discovered fee payer. **Without
 `HEDERA_PRIVATE_KEY` the demo still runs, and every pay button answers `no Hedera key configured`
 rather than staging a fake receipt** — that state is honest, but it is not the demo.
 
+The two refusal scenarios below (`DEMO-0002`, `DEMO-0003`) need **none** of that: the server
+authorises before it quotes a price, so a refusal costs no key, no funds and no network. A judge
+holding nothing can reproduce them; only the settling scenarios need the payer account.
+
 **Reset procedure (the part that matters mid-event):** click `reset`, or
 `curl -XPOST localhost:8402/demo/reset`. It rebuilds the grant tree in memory — one parent
-(1 000 000 tinybar), two children (300 000 each) — and un-revokes everything. Nothing is persisted,
+(1 000 000 tinybar), two children at 300 000 and a third, `child-c`, at 150 000 — and un-revokes
+everything. `child-c` exists so that "over budget" is reachable on a fresh tree: its cap sits below
+`/summarize`'s 250 000 price, so refusal needs no prior spending. Nothing is persisted,
 so restarting the server has the same effect. Settled HBAR is *not* returned; the payer account
 needs enough testnet balance for a full run-through (≈1 000 000 tinybar = 0.01 HBAR).
 
@@ -47,10 +53,11 @@ facilitator settles on Hedera testnet. No shared wallet exists anywhere in the f
 
 ## DEMO-0002 — the same agent is refused past its allowance
 
-**Status:** implemented.
+**Status:** run, no credentials — `surface/evidence/demo-0002-over-limit.png` and
+`surface/evidence/refusals-no-credentials.txt`.
 
-**Steps:** click `pay /summarize` (250 000) on `child-a` until the remaining allowance is below the
-price — from a fresh reset that is one `/translate` then two `/summarize`.
+**Steps:** click `pay /summarize` on `child-c`, whose cap (150 000) is below the price (250 000).
+Equivalently: `curl -XPOST 'localhost:8402/demo/pay?grant=child-c&route=/summarize'`.
 
 **Expected output:** `403 OVER_LIMIT`, no transaction id, and the log line saying nothing settled.
 
@@ -62,7 +69,7 @@ surface tests assert directly.
 
 ## DEMO-0003 — the parent revokes, mid-flight
 
-**Status:** implemented.
+**Status:** run, no credentials — `surface/evidence/demo-0003-revoked.png`.
 
 **Steps:** click `revoke` on `child-a`, then `pay /translate` on `child-a`.
 
@@ -75,7 +82,8 @@ transaction, and no key rotation.
 
 ## DEMO-0004 — the sibling is untouched
 
-**Status:** implemented.
+**Status:** implemented; the *unaffected* half is visible without a key (`child-b` passes
+authorisation and reaches the payment step), but the `200` needs the payer account, as `DEMO-0001`.
 
 **Steps:** immediately after DEMO-0003, click `pay /translate` on `child-b`.
 
