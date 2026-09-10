@@ -42,7 +42,8 @@ export function feePayerFor(kinds: SupportedKind[], network: string = HEDERA_TES
  * can report it as a payment refusal instead of a crash.
  */
 export function feePayerMismatch(required: Record<string, unknown>, advertised: string | undefined): string | undefined {
-  const asked = required["feePayer"];
+  const extra = required["extra"];
+  const asked = extra && typeof extra === "object" ? (extra as Record<string, unknown>)["feePayer"] : undefined;
   if (typeof asked !== "string" || advertised === undefined) return undefined;
   return asked === advertised ? undefined : `402 asks for feePayer ${asked} but facilitator advertises ${advertised}`;
 }

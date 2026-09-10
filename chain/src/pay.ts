@@ -1,12 +1,24 @@
 import { wrapFetchWithPayment, x402Client, decodePaymentResponseHeader } from "@x402/fetch";
 import type { PaymentRequired, PaymentRequirements } from "@x402/fetch";
+import type { SettleResponse } from "@x402/core/types";
+import { encodePaymentSignatureHeader } from "@x402/core/http";
 import { ExactHederaScheme, createClientHederaSigner, PrivateKey, HEDERA_TESTNET_CAIP2 } from "@x402/hedera";
 import type { ClientHederaSigner } from "@x402/hedera";
 import { hashScanUrl } from "./hashscan.js";
 import { PaymentError, type Settlement } from "./types.js";
 
-/** Header the resource server returns settlement evidence in. */
-const PAYMENT_RESPONSE_HEADER = "X-PAYMENT-RESPONSE";
+/**
+ * Headers a resource server may return settlement evidence in, canonical first.
+ *
+ * x402 v2 — the version this lane pins — names it `PAYMENT-RESPONSE`;
+ * `X-PAYMENT-RESPONSE` is the v1 spelling, still emitted by v1 servers and still
+ * read by `@x402/fetch`. Reading only the legacy name loses every real v2
+ * settlement, which is the one thing this lane exists to produce.
+ */
+const PAYMENT_RESPONSE_HEADERS = ["PAYMENT-RESPONSE", "X-PAYMENT-RESPONSE"] as const;
+
+/** Header the paid retry carries the signed payload in (v1: `X-PAYMENT`). */
+const PAYMENT_SIGNATURE_HEADER = "PAYMENT-SIGNATURE";
 
 /**
  * Builds the payer-side signer. Testnet only — `contracts/chain.md` forbids
@@ -61,14 +73,25 @@ export function selectHederaRequirement(accepts: readonly PaymentRequirements[])
  * payment path produces the same link format.
  */
 export function settlementFrom(response: Response): Settlement {
-  const header = response.headers.get(PAYMENT_RESPONSE_HEADER);
+  const header = PAYMENT_RESPONSE_HEADERS.map((name) => response.headers.get(name)).find(
+    (value): value is string => value !== null,
+  );
   if (!header) {
     throw new PaymentError(
-      `paid response carried no ${PAYMENT_RESPONSE_HEADER} header; settlement cannot be evidenced`,
+      `paid response carried no ${PAYMENT_RESPONSE_HEADERS.join(" or ")} header; settlement cannot be evidenced`,
       "no_settlement_header",
     );
   }
-  const settle = decodePaymentResponseHeader(header);
+  return settlementOf(decodePaymentResponseHeader(header));
+}
+
+/**
+ * Turns a facilitator `SettleResponse` into evidence, or throws.
+ *
+ * Shared by the resource-server path (header-borne) and the direct-facilitator
+ * path (body-borne) so both produce byte-identical evidence.
+ */
+export function settlementOf(settle: SettleResponse): Settlement {
   if (!settle.success) {
     throw new PaymentError(`settlement failed: ${settle.errorReason ?? "unknown"}`, settle.errorReason, settle.errorMessage);
   }
@@ -95,6 +118,7 @@ export async function payUrl(
   signer: ClientHederaSigner,
   init?: RequestInit,
 ): Promise<{ response: Response; settlement: Settlement }> {
+  rejectUnreplayableBody(init);
   const fetchWithPayment = wrapFetchWithPayment(fetch, createTestnetClient(signer));
   const response = await fetchWithPayment(url, init);
   if (!response.ok) {
@@ -126,5 +150,32 @@ export async function payForRequest(
   }
   const url = required.resource?.url;
   if (!url) throw new PaymentError("402 carried no resource url", "no_resource_url");
-  return payUrl(url, signer, init);
+  rejectUnreplayableBody(init);
+
+  const payload = await createTestnetClient(signer).createPaymentPayload(required);
+  const headers = new Headers(init?.headers);
+  headers.set(PAYMENT_SIGNATURE_HEADER, encodePaymentSignatureHeader(payload));
+  headers.set("Access-Control-Expose-Headers", PAYMENT_RESPONSE_HEADERS.join(","));
+
+  const response = await fetch(url, { ...init, headers });
+  if (!response.ok) {
+    throw new PaymentError(`paid request returned ${response.status}`, "resource_error", await response.text().catch(() => ""));
+  }
+  return { response, settlement: settlementFrom(response) };
+}
+
+/**
+ * Refuses a body that cannot survive the paid retry.
+ *
+ * Both paths send the request twice (unpaid 402, then paid), and a stream is
+ * consumed by the first send. Failing before the first request is cheaper than
+ * failing after a payment has been signed.
+ */
+function rejectUnreplayableBody(init?: RequestInit): void {
+  if (init?.body instanceof ReadableStream) {
+    throw new PaymentError(
+      "streamed request bodies cannot be replayed on the paid retry; buffer the body first",
+      "unreplayable_body",
+    );
+  }
 }
