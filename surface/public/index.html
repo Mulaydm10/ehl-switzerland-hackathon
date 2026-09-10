@@ -1,0 +1,115 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Delegated spending — live demo</title>
+    <style>
+      :root { color-scheme: dark; }
+      body { font: 15px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace; margin: 0 auto; max-width: 60rem; padding: 2rem 1.5rem 4rem; background: #0d1117; color: #e6edf3; }
+      h1 { font-size: 1.25rem; margin: 0 0 .25rem; }
+      p.sub { color: #8b949e; margin: 0 0 2rem; }
+      table { border-collapse: collapse; width: 100%; margin-bottom: 1.5rem; }
+      th, td { text-align: left; padding: .45rem .6rem; border-bottom: 1px solid #30363d; }
+      th { color: #8b949e; font-weight: 400; }
+      td.num { text-align: right; }
+      button { font: inherit; background: #21262d; color: #e6edf3; border: 1px solid #30363d; border-radius: 6px; padding: .25rem .6rem; cursor: pointer; }
+      button:hover { border-color: #8b949e; }
+      .revoked { color: #f85149; }
+      #log { white-space: pre-wrap; background: #010409; border: 1px solid #30363d; border-radius: 6px; padding: .9rem; min-height: 9rem; }
+      #log a { color: #58a6ff; }
+      .ok { color: #3fb950; }
+      .refused { color: #d29922; }
+      .err { color: #f85149; }
+      .bar { display: flex; gap: .5rem; align-items: center; margin-bottom: 1.5rem; }
+    </style>
+  </head>
+  <body>
+    <h1>Delegated spending on Hedera</h1>
+    <p class="sub">
+      Each child agent holds its own key and its own allowance. The resource server asks the
+      allowance algebra before it settles anything, so a refusal is provably free of a payment.
+    </p>
+
+    <div class="bar">
+      <span id="meta"></span>
+      <button id="reset">reset</button>
+    </div>
+
+    <table>
+      <thead>
+        <tr><th>grant</th><th>agent</th><th>parent</th><th class="num">limit</th><th class="num">remaining</th><th>state</th><th>actions</th></tr>
+      </thead>
+      <tbody id="grants"></tbody>
+    </table>
+
+    <div id="log">Pick an action above.</div>
+
+    <script type="module">
+      const log = document.getElementById("log");
+      const tbody = document.getElementById("grants");
+      const meta = document.getElementById("meta");
+      let routes = [];
+
+      const write = (html) => { log.innerHTML = html; };
+      const esc = (s) => String(s).replace(/[<&]/g, (c) => (c === "<" ? "&lt;" : "&amp;"));
+
+      async function refresh(state) {
+        const data = state ?? (await (await fetch("/demo/state")).json());
+        routes = data.routes;
+        // "paying" would have read as though a payer existed; without a key the
+        // refusals below are still real and the settlements are not reachable.
+        const key = data.canPay ? "key loaded" : "no key — refusals only";
+        meta.textContent = `${data.network} · seller ${data.payTo} · ${key} · ${data.routes.map((r) => `${r.path} ${r.amount} tinybar`).join(" · ")}`;
+        tbody.innerHTML = "";
+        for (const g of data.grants) {
+          const tr = document.createElement("tr");
+          tr.innerHTML =
+            `<td>${esc(g.id)}</td><td>${esc(g.child)}</td><td>${esc(g.parent ?? "—")}</td>` +
+            `<td class="num">${esc(g.limit)}</td><td class="num">${esc(g.remaining)}</td>` +
+            `<td class="${g.revoked ? "revoked" : ""}">${g.revoked ? "revoked" : "active"}</td><td></td>`;
+          const actions = tr.lastElementChild;
+          for (const route of routes) {
+            const pay = document.createElement("button");
+            pay.textContent = `pay ${route.path}`;
+            pay.onclick = () => run(`/demo/pay?grant=${encodeURIComponent(g.id)}&route=${encodeURIComponent(route.path)}`, `${g.id} pays ${route.path}`);
+            actions.append(pay, document.createTextNode(" "));
+          }
+          if (!g.revoked) {
+            const cut = document.createElement("button");
+            cut.textContent = "revoke";
+            cut.onclick = () => run(`/demo/revoke?grant=${encodeURIComponent(g.id)}`, `revoke ${g.id}`);
+            actions.append(cut);
+          }
+          tbody.append(tr);
+        }
+        return data;
+      }
+
+      function render(label, result, httpStatus) {
+        const inner = result.body ?? {};
+        if (typeof result.error === "string") {
+          return `<span class="err">${httpStatus} ${esc(label)} — ${esc(result.error)}</span>\nnothing settled; no transaction exists to link.`;
+        }
+        if (result.status === 200 && inner.settlement) {
+          const url = inner.settlement.explorerUrl;
+          return `<span class="ok">200 ${esc(label)}</span>\nsettled ${esc(inner.settlement.transactionId)}\n<a href="${esc(url)}" target="_blank" rel="noreferrer">${esc(url)}</a>`;
+        }
+        if (inner.reason) {
+          return `<span class="refused">${result.status} refused — ${esc(inner.reason)}</span>\nnothing settled; no transaction exists to link.`;
+        }
+        return `<span class="err">${result.status ?? httpStatus} ${esc(JSON.stringify(inner))}</span>`;
+      }
+
+      async function run(path, label) {
+        write(`… ${esc(label)}`);
+        const response = await fetch(path, { method: "POST" });
+        const data = await response.json();
+        if (data.grants) await refresh({ ...(await (await fetch("/demo/state")).json()), grants: data.grants });
+        write(path.startsWith("/demo/pay") ? render(label, data, response.status) : `<span class="ok">${esc(label)}</span>`);
+      }
+
+      document.getElementById("reset").onclick = () => run("/demo/reset", "reset");
+      refresh();
+    </script>
+  </body>
+</html>
