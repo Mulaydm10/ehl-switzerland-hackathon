@@ -11,9 +11,26 @@ still unwritten (Q-0001).
 
 ## One line
 
-Capped, revocable spending authority for AI agents: a parent agent grants a child a budget, the
-child pays a real x402-gated service on Hedera testnet, and the parent can cut it off — with the
-refusal reason returned before any price is quoted.
+Agent-to-agent commerce with a brake on it: one agent buys another agent's service per request over
+x402 on Hedera, under an authority its principal caps and can revoke mid-flight — and the refusal
+reason comes back *before* a price is quoted.
+
+(The same sentence in our own vocabulary, since the repo is written that way: capped, revocable,
+attenuating delegation of spending authority, enforced at the resource server's quote step.)
+
+## Why this is the x402 story, not a delegation paper
+
+x402 makes a machine able to pay for a resource without a human in the request path. The question it
+leaves open is the one an operator actually asks: *how much can it spend, and how do I stop it?*
+Today the honest answers are "a whole key's worth" and "rotate the key" — which is the same tool for
+both, and it takes the agent offline to fix a budget.
+
+This project puts the budget where the price is quoted. A parent agent issues a child a capped,
+time-bounded, revocable grant; the child hits a paid route; the server evaluates the grant against
+the *quoted* amount and either debits the allowance and settles, or refuses with a reason the caller
+can act on (`OVER_LIMIT`, `REVOKED`, `PARENT_REVOKED`). Revocation lands within one request, and no
+key is rotated. The interesting property is negative and cheap to check: on a refusal the
+facilitator is never called, so no money could have moved even by accident.
 
 ## What it does
 
@@ -90,7 +107,9 @@ Credited because a judge will find it otherwise, and because it shaped the desig
 | Demo video | `TODO` — Cut B (keyless) is recorded; upload target is `TODO(COMPETITION.md)` |
 | Evidence table | `RESULTS.md` |
 | Demo script | `DEMO.md` |
-| Decisions | `design/decisions/ADR-0002`, `ADR-0003`, `ADR-0004` |
+| Decisions | `design/decisions/ADR-0002`, `ADR-0003`, `ADR-0004`, `ADR-0005` |
+| Sponsor capability map | `submissions/SPONSOR-DEPTH.md` — what we exercise per sponsor, and what we don't |
+| Track audit | `submissions/TRACKS.md` |
 | Bazantic username | n/a — no account (see above) |
 
 ## Known limitations, stated by us first
