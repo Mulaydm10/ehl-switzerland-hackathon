@@ -73,3 +73,7 @@ a broken baseline. Design cannot pre-create those files: CI confines `design/*` 
 - 2026-09-10: real lane split lands (`core`/`chain`/`surface`) with `docs/verify.txt` and
   `docs/setup.sh` in the same PR, so one canary round covers all three. Idea settled after three
   adversarial passes on #3: the project claims *evidence*, not a novel mechanism — see ADR-0003.
+- 2026-08-31: all three lanes merged (#12 chain, #13 core, #14 surface, #17 ENS reads) and their
+  design counterparts (#11, #15, #18, #19, #20). `claim/7`, `claim/8`, `claim/9`, `claim/16` deleted;
+  #8 and #9 closed. #7 and #16 stay open deliberately — their acceptance criteria are a HashScan link
+  and an onchain ENS write, and neither credential exists, so neither is claimed.

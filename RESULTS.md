@@ -38,7 +38,7 @@ the settling rows, whose evidence is a HashScan link nobody can fabricate.
 | C-1 | A child may be granted only a subset of its parent's authority; attenuation holds at every hop | `npm test --prefix core` | property tests, depth 1–5 | proven |
 | C-2 | Over-budget requests are refused with a reason a caller can act on (`OVER_LIMIT`), not a bare deny | `DEMO-0002`, no credentials of any kind | `surface/evidence/demo-0002-over-limit.png`, transcript in `surface/evidence/refusals-no-credentials.txt` | proven |
 | C-3 | Revoking a parent refuses the whole subtree, and reports *which* — `REVOKED` vs `PARENT_REVOKED` | `DEMO-0003`, no credentials | `surface/evidence/demo-0003-revoked.png` (`REVOKED`, the cut grant); `PARENT_REVOKED` for a descendant asserted in `surface/test/handler.test.ts` | proven for `REVOKED`; `PARENT_REVOKED` offline only |
-| C-4 | Revoking one child leaves its sibling unaffected | `DEMO-0004` | sibling reaches the payment step untouched (transcript, same file); the settlement that would finish it is H-1 | blocked — the *unaffected* half needs the Hedera key |
+| C-4 | Revoking one child leaves its sibling unaffected | `DEMO-0004`, no credentials for the authorisation half | `surface/evidence/demo-0004-sibling-no-key.png` — `child-a` revoked, `child-b` still holds its full 300 000 tinybar and passes authorisation, then stops at `no Hedera key configured`; the settlement that would finish it is H-1 | proven that the sibling is unaffected; blocked for the settlement that follows |
 
 ## Prior art credited, per ADR-0003 and ADR-0004
 

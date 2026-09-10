@@ -15,6 +15,18 @@ Whether the Hedera payer account exists when we record:
 
 Cut B is a weaker video and an honest one. Do not narrate Cut A's script over Cut B's screen.
 
+## What has actually been recorded
+
+**Cut B, shot 2026-08-31.** No payer key existed, so this is the honest cut: shots 2 and 3 in
+full (`OVER_LIMIT`, then `revoke` → `REVOKED`), and shot 4 up to the sibling passing authorisation
+and the server answering `no Hedera key configured` — said as blocked, not skipped. Shot 1 and the
+HashScan page were not recorded, because there is nothing to record.
+
+The first take was discarded: it exposed a real UI bug (the log pane rendered `{}` for the no-key
+answer, which reads as a silent failure). Fixed on `claim/9` at `d0f3d30`, then re-shot.
+
+Cut A remains unshot and stays unshot until a Hedera testnet key exists.
+
 ## Shot list
 
 | # | Screen | Narration (the claim) | Row |

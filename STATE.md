@@ -9,7 +9,7 @@ correct behavior, not data loss. If this file and `worklog.md` ever disagree abo
 > **Does not own:** bus mode/merge/lanes — that's `docs/STATE.md`, design-owned (Devin, via
 > `claim/state`). Don't put lane rows or `mode:`/`merge:` here; don't put project narrative there.
 
-**Last updated:** 2026-09-10 (design node, via PR #6) — idea and stack resolved, lanes queued
+**Last updated:** 2026-08-31 (design node) — all three lanes merged; what remains is credentials and submission text
 
 ## Deadline + time remaining
 
@@ -28,15 +28,29 @@ correct behavior, not data loss. If this file and `worklog.md` ever disagree abo
   judged rails. Read ADR-0003 before proposing a "novel" angle; that is where it was litigated.
 - **Stack settled (Q-0003 → ADR-0002): TypeScript/Node.** Python remains only for the bus canary.
 - Three implementation lanes cut: `core/`, `chain/`, `surface/`, each with a `contracts/<lane>.md`.
+- **All three lanes are merged.** `core/` (#13) delegation algebra with property tests at depth 1–5;
+  `chain/` (#12) Hedera x402 settlement through Blocky402 plus a direct `POST /settle` path;
+  `surface/` (#14) two differently-priced x402 routes, quote-time authorisation, browser demo;
+  ENS read-side resolution live on Sepolia (#17).
+- **`RESULTS.md` is the claim ledger** (#19): C-1..C-4 proven without any credentials; H-1, H-2, E-3,
+  B-1 and B-2 `blocked` and named as such.
+- Demo video **Cut B** (the keyless cut) recorded — `submissions/VIDEO.md` records what is on it and
+  what deliberately is not.
 
 ## In flight
 
-- #7 `chain` — one real Hedera x402 payment with a HashScan link (p0, the qualifying artifact).
-- #8 `core` — allowance algebra + property tests (p0, parallel with #7, no dependency).
-- #9 `surface` — x402-gated server, blocked-by #7.
+- Submission text: the repo/video/evidence package and the prior-art credits ADR-0003 requires.
+- #7 stays open on purpose: its acceptance criterion is a HashScan link, and none exists.
+- #16 stays open for the ENS **write** side (publishing and revoking the vouch record); reads landed.
 
 ## Blocked
 
+- **No Hedera testnet key.** Every settlement claim (H-1, H-2, the settling half of C-4, Cut A of the
+  video) is `blocked` in `RESULTS.md` and stays there until a key exists.
+- **No funded Sepolia account** → E-3 (revocation published onchain) is not built and not claimed.
+- **No bazantic.com account** → B-1/B-2 impossible; their prize needs an A/B against a Recipe plus a
+  gateway, an MCP server and a username (ADR-0004). Either that account exists or we submit to two
+  sponsors and say so.
 - **Q-0001 (event identity) and the rest of `COMPETITION.md` are still `TODO(Dhruv)`** — LOCKED, and
   nobody else may fill them. This no longer blocks building, but it does block submission: there is
   no confirmed deadline in writing.
@@ -44,10 +58,9 @@ correct behavior, not data loss. If this file and `worklog.md` ever disagree abo
 
 ## Next intended step
 
-1. Land the lanes (#7, #8, #9); #7 first — everything downstream assumes the rail works.
-2. Wire the four demo scenarios in `contracts/surface.md` into a reproducible results table.
-3. Record the demo video against that table.
-4. Dhruv: `COMPETITION.md` + audit row, and the public flip.
+1. Write the submission package against `RESULTS.md` — no sentence without a row.
+2. Dhruv: the three credentials above, or the explicit decision to drop each claim.
+3. Dhruv: `COMPETITION.md` + audit row, and the public flip.
 
 ## Latest experiment
 
