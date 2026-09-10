@@ -13,6 +13,17 @@ export { hashScanUrl, toHashScanTxId, hashScanNetwork } from "./hashscan.js";
 export { fetchSupported, feePayerFor, feePayerMismatch, type SupportedKind } from "./supported.js";
 export { PaymentError, type Settlement } from "./types.js";
 export {
+  HEDERA_TESTNET_MIRROR,
+  accountFacts,
+  confirmTransfer,
+  creditedTo,
+  disagreement,
+  type AccountFacts,
+  type TransferFacts,
+  type Disagreement,
+  type Fetcher,
+} from "./mirror.js";
+export {
   UNIVERSAL_RESOLVER,
   resolveAddress,
   resolveText,
