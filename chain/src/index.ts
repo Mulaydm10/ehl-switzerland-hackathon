@@ -12,3 +12,12 @@ export { loadChainEnv } from "./env.js";
 export { hashScanUrl, toHashScanTxId, hashScanNetwork } from "./hashscan.js";
 export { fetchSupported, feePayerFor, feePayerMismatch, type SupportedKind } from "./supported.js";
 export { PaymentError, type Settlement } from "./types.js";
+export {
+  UNIVERSAL_RESOLVER,
+  resolveAddress,
+  resolveText,
+  vouchesFor,
+  testnetCaller,
+  type Caller,
+  type Resolution,
+} from "./ens.js";
