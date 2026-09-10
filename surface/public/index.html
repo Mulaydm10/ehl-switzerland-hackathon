@@ -56,7 +56,10 @@
       async function refresh(state) {
         const data = state ?? (await (await fetch("/demo/state")).json());
         routes = data.routes;
-        meta.textContent = `${data.network} · paying ${data.payTo} · ${data.routes.map((r) => `${r.path} ${r.amount} tinybar`).join(" · ")}`;
+        // "paying" would have read as though a payer existed; without a key the
+        // refusals below are still real and the settlements are not reachable.
+        const key = data.canPay ? "key loaded" : "no key — refusals only";
+        meta.textContent = `${data.network} · seller ${data.payTo} · ${key} · ${data.routes.map((r) => `${r.path} ${r.amount} tinybar`).join(" · ")}`;
         tbody.innerHTML = "";
         for (const g of data.grants) {
           const tr = document.createElement("tr");
