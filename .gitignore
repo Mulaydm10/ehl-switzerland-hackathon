@@ -1,0 +1,18 @@
+# Generic hygiene only — no stack-specific entries until ADR-0002-stack-selection.md is resolved.
+# Once a stack is chosen, add its ignores here in the same change (see ADR-0002's binding rule).
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Editors
+.vscode/
+.idea/
+*.swp
+
+# Secrets — never commit real credentials
+.env
+.env.*
+!.env.example
+
+# logs/ and scratch/ have their own local .gitignore whitelists; nothing to add here for them.

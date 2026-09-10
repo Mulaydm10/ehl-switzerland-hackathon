@@ -1,0 +1,5 @@
+# Normalize line endings; keep the diff quiet across OSes on a team hackathon repo.
+* text=auto eol=lf
+
+# Treat markdown explicitly as text (they already match the rule above; explicit for clarity).
+*.md text eol=lf

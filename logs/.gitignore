@@ -1,0 +1,4 @@
+# Ignore all run output by default; keep the process docs tracked.
+*
+!.gitignore
+!README.md
