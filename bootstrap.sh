@@ -25,9 +25,10 @@ done
 case "$MODE" in solo|team) ;; *) echo "mode must be solo|team"; exit 1 ;; esac
 case "$MERGE" in human|auto-lane) ;; *) echo "merge must be human|auto-lane"; exit 1 ;; esac
 # a lane is a directory path (api, src/01_ingest); no lane may be a path-prefix of another (one file would belong to two lanes)
-for L in "${LANES[@]}"; do
+for L in "${LANES[@]:-}"; do
+  [ -z "$L" ] && continue
   [[ "$L" =~ ^[A-Za-z0-9_-]+(/[A-Za-z0-9_-]+)*$ ]] || { echo "bad lane '$L': segments of [A-Za-z0-9_-], joined by /"; exit 1; }
-  for M in "${LANES[@]}"; do case "$M" in "$L"/*) echo "lane '$L' is a prefix of lane '$M'"; exit 1 ;; esac; done
+  for M in "${LANES[@]:-}"; do [ -z "$M" ] && continue; case "$M" in "$L"/*) echo "lane '$L' is a prefix of lane '$M'"; exit 1 ;; esac; done
 done
 
 command -v gh >/dev/null || { echo "gh CLI required: https://cli.github.com"; exit 1; }
@@ -48,11 +49,12 @@ label prio:p0        B60205 "pick order: lowest prio first, then oldest"
 label prio:p1        E99695 "pick order"
 label prio:p2        F9D0C4 "pick order"
 label lane:canary    999999 "standing canary lane"
-for L in "${LANES[@]}"; do label "lane:$L" C2E0C6 "may touch $L/ and tests/$L/ only"; done
+for L in "${LANES[@]:-}"; do [ -z "$L" ] && continue; label "lane:$L" C2E0C6 "may touch $L/ and tests/$L/ only"; done
 
 echo "-- files"
 sed -i.bak -E "s/^mode: .*/mode: $MODE/; s/^merge: .*/merge: $MERGE/" docs/STATE.md && rm docs/STATE.md.bak
-for L in "${LANES[@]}"; do
+for L in "${LANES[@]:-}"; do
+  [ -z "$L" ] && continue
   mkdir -p "$L" "tests/$L"; touch "$L/__init__.py" "tests/$L/__init__.py"
   grep -q "^| \`lane:$L\`" docs/STATE.md ||
     sed -i.bak -E "/^\| \`lane:canary\`/a\\

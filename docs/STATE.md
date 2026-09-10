@@ -41,4 +41,4 @@ merge: human
 - Actions minutes are one pool per repo; check quota before a team event.
 
 ## Log
-- <date>: repo created from agent-bus-template; bootstrap run.
+- 2026-09-10: repo created from agent-bus-template; bootstrap run (mode=solo).
