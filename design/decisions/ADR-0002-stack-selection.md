@@ -1,10 +1,14 @@
 # ADR-0002: Stack selection
 
-**Status:** Proposed
+**Status:** Accepted — TypeScript/Node (see Decision). Partially discharged; see "Deviation".
 
 **Date:** 2026-09-10
 
 ## Context
+
+*(Written while the stack was still open; preserved as the situation that forced the decision. The
+constraints that resolved it — the idea settling in ADR-0003 and the three rails' SDKs — arrived
+later and are recorded under Decision.)*
 
 No stack has been chosen. This is a deliberate decision, not an omission: the idea isn't chosen yet
 (`VISION.md`, Q-0002), and the event identity itself is unresolved (`COMPETITION.md`, Q-0001) — an
@@ -39,7 +43,24 @@ Registered as **Q-0003** in `research/open_questions.md`.
 
 ## Decision
 
-Not yet made. TODO(Dhruv) once the idea and event identity are known enough to decide.
+**TypeScript/Node**, with Python retained *only* for the bus canary (`tests/canary`).
+
+This is option 4 ("something event-specific") collapsing onto option 2, and it is forced rather
+than preferred — every rail we must touch ships a TS SDK and nothing else usable:
+
+- **Hedera x402** — the `@x402/hedera` client and Blocky402's facilitator API are TS-first; the
+  payload is a signed `TransferTransaction`, produced by the Hedera JS SDK.
+- **ENSv2 on the hackathon Sepolia deployment** — viem/ethers, and the hackathon requires
+  *overriding* viem's hardcoded Universal Resolver (see `contracts/chain.md`), which is a
+  TS-level concern.
+- **Bazantic** — gateway/MCP registration and `bazantic-cli` are Node.
+
+No Solidity toolchain: Hedera x402 cannot settle into a contract call, and the ENSv2 contracts we
+need are already deployed by the organisers — we call them, we do not author them. This removes
+Foundry/Hardhat from the critical path entirely.
+
+Python stays installed because deleting it breaks the canary, and the canary is what certifies
+every future workflow change.
 
 ## Consequences / binding rule
 
@@ -51,3 +72,20 @@ change**:
 3. Land a **real, passing** smoke test — not a stub, not a placeholder that always passes.
 4. Update `tests/README.md` to describe the real baseline instead of stating there is none.
 5. Close Q-0003 in `research/open_questions.md`.
+
+## Deviation from the binding rule — stated, not silently skipped
+
+The change accepting this ADR discharges **2** (`CLAUDE.md` commands) and **5** (Q-0003 superseded
+by an appended entry, since `research/open_questions.md` is append-only). It does **not** discharge
+1, 3, or 4, for two structural reasons rather than convenience:
+
+- **1 and 3 are impossible from a design branch.** The toolchain config and the smoke test belong in
+  `core/`, `chain/`, `surface/` — lane directories. CI (`lane`) confines `design/*` branches to
+  everything *outside* lane directories, so design physically cannot create them. They are instead
+  the **acceptance criteria of each lane's first issue**: no lane PR passes `run` until that lane
+  has a `package.json` with a real `test` script, because `docs/verify.txt` invokes it.
+- **4 is a LOCKED file.** `tests/README.md` may only be changed by Dhruv or with his sign-off, with
+  a row in `GOVERNANCE.md`'s audit table.
+
+**Outstanding, owned by Dhruv:** update LOCKED `tests/README.md` once `core/` lands its first real
+test, and log it. Until then the repo correctly states it has no test baseline beyond the canary.
