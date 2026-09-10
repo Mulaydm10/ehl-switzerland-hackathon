@@ -85,8 +85,11 @@
         return data;
       }
 
-      function render(label, result) {
+      function render(label, result, httpStatus) {
         const inner = result.body ?? {};
+        if (typeof result.error === "string") {
+          return `<span class="err">${httpStatus} ${esc(label)} — ${esc(result.error)}</span>\nnothing settled; no transaction exists to link.`;
+        }
         if (result.status === 200 && inner.settlement) {
           const url = inner.settlement.explorerUrl;
           return `<span class="ok">200 ${esc(label)}</span>\nsettled ${esc(inner.settlement.transactionId)}\n<a href="${esc(url)}" target="_blank" rel="noreferrer">${esc(url)}</a>`;
@@ -94,7 +97,7 @@
         if (inner.reason) {
           return `<span class="refused">${result.status} refused — ${esc(inner.reason)}</span>\nnothing settled; no transaction exists to link.`;
         }
-        return `<span class="err">${result.status ?? ""} ${esc(JSON.stringify(inner))}</span>`;
+        return `<span class="err">${result.status ?? httpStatus} ${esc(JSON.stringify(inner))}</span>`;
       }
 
       async function run(path, label) {
@@ -102,7 +105,7 @@
         const response = await fetch(path, { method: "POST" });
         const data = await response.json();
         if (data.grants) await refresh({ ...(await (await fetch("/demo/state")).json()), grants: data.grants });
-        write(path.startsWith("/demo/pay") ? render(label, data) : `<span class="ok">${esc(label)}</span>`);
+        write(path.startsWith("/demo/pay") ? render(label, data, response.status) : `<span class="ok">${esc(label)}</span>`);
       }
 
       document.getElementById("reset").onclick = () => run("/demo/reset", "reset");
