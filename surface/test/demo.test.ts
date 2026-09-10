@@ -67,6 +67,31 @@ test("without a key the demo says so instead of faking a settlement", async () =
   assert.match(String((reply?.body as { error: string }).error), /HEDERA_PRIVATE_KEY/);
 });
 
+test("a revoked grant is refused without a key, because refusing costs nothing", async () => {
+  const d = deps(start());
+  await handleDemo(post("/demo/revoke", "grant=child-a"), d, demo);
+  const reply = await handleDemo(post("/demo/pay", "grant=child-a&route=/translate"), d, demo);
+  const body = reply?.body as { status: number; body: { reason: string; settled: boolean } };
+  assert.equal(body.status, 403, "not 503: the demo has no key, and does not need one to refuse");
+  assert.equal(body.body.reason, "REVOKED");
+  assert.equal(body.body.settled, false);
+});
+
+test("a request over the child's cap is refused without a key", async () => {
+  const small = grant(start(), "parent", { id: "child-small", child: "small", limit: 50_000n, asset: HBAR, notBefore: 0, notAfter: 10_000 });
+  assert.ok(small.ok);
+  const d = deps(small.value);
+
+  const inside = await handleDemo(post("/demo/pay", "grant=child-a&route=/translate"), d, demo);
+  assert.equal(inside?.status, 503, "child-a is inside its cap, so this one really does need a key");
+
+  const over = await handleDemo(post("/demo/pay", "grant=child-small&route=/translate"), d, demo);
+  const body = over?.body as { status: number; body: { reason: string; settled: boolean } };
+  assert.equal(body.status, 403);
+  assert.equal(body.body.reason, "OVER_LIMIT", "50 000 tinybar of authority cannot buy a 100 000 route");
+  assert.equal(body.body.settled, false);
+});
+
 test("a paying demo relays the resource server's own status and reason", async () => {
   const withPayer: DemoDeps = { reset: start, pay: async () => ({ status: 403, body: { reason: "OVER_LIMIT", settled: false } }) };
   const reply = await handleDemo(post("/demo/pay", "grant=child-a&route=/summarize"), deps(start()), withPayer);

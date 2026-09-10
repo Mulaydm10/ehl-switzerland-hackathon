@@ -77,6 +77,21 @@ test("the two paid routes quote different prices", async () => {
   assert.equal(dear.accepts[0]?.amount, "250000");
 });
 
+test("a grant we would refuse is told so at quote time, not sent away to sign", async () => {
+  const rec = recorder();
+  const d = deps(revoke(family(), "child-a"), rec.settle);
+
+  // No payment signature: this is the *first* request of the 402 loop, and the
+  // caller holds no key yet. It still gets the reason.
+  const reply = await handle(request("/translate", { [DELEGATION_HEADER]: "child-a" }), d);
+  assert.equal(reply.status, 403, "quoting a price to a revoked grant would invite a doomed transfer");
+  assert.deepEqual(reply.body, { reason: "REVOKED", settled: false, grant: "child-a" });
+  assert.equal(rec.calls.length, 0);
+
+  const good = await handle(request("/translate", { [DELEGATION_HEADER]: "child-b" }), d);
+  assert.equal(good.status, 402, "an authorized grant still gets the price, not a decision");
+});
+
 test("a paid request within the allowance settles, serves, and debits", async () => {
   const state = family();
   const rec = recorder();

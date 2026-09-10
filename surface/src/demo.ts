@@ -1,5 +1,5 @@
 import { remaining, revoke, type Grant, type State } from "@ehl/core";
-import type { Reply } from "./handler.js";
+import { refuse, type Reply } from "./handler.js";
 import type { ServerDeps } from "./types.js";
 
 /**
@@ -83,6 +83,18 @@ export async function handleDemo(
     const grantId = input.query.get("grant");
     const route = input.query.get("route");
     if (!grantId || !route) return json(400, { error: "?grant= and ?route= are required" });
+
+    const priced = deps.routes.find((r) => r.path === route);
+    if (!priced) return json(404, { error: `no such route ${route}` });
+
+    // A refusal is the server's own answer and costs no key, so ask for it
+    // before asking for one. Scenarios 2 and 3 are therefore reproducible by
+    // anyone, with or without a funded Hedera account.
+    const refusal = refuse(priced, grantId, deps);
+    if (refusal) {
+      return json(200, { status: refusal.status, body: refusal.body, grants: view(deps.store.read()) });
+    }
+
     if (!demo.pay) {
       return json(503, { error: "no Hedera key configured; set HEDERA_ACCOUNT_ID and HEDERA_PRIVATE_KEY (see surface/.env.example)" });
     }

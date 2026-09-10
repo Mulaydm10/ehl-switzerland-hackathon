@@ -37,6 +37,28 @@ function decodePaymentSignature(header: string): unknown {
 }
 
 /**
+ * The refusal, or `undefined` when the grant may proceed. The reason is
+ * rendered verbatim: it is the row in the results table, not UX copy.
+ */
+export function refuse(route: Route, grantId: string, deps: ServerDeps): Reply | undefined {
+  const requirements = requirementsFor(route, deps);
+  const decision = authorize(
+    deps.store.read(),
+    grantId,
+    requirements.asset,
+    BigInt(requirements.amount),
+    deps.now(),
+  );
+  if (decision.allowed) return undefined;
+
+  return {
+    status: 403,
+    headers: { "content-type": "application/json" },
+    body: { reason: decision.reason, settled: false, grant: grantId },
+  };
+}
+
+/**
  * One request, as a pure-ish function of the deps: everything that touches the
  * network or the clock is injected, so every branch below — including the
  * refusals, which are the demo's evidence — is reachable from a unit test.
@@ -45,6 +67,13 @@ function decodePaymentSignature(header: string): unknown {
  * refused request cannot move money: scenario 2 and 3 of the demo claim
  * "nothing settled", and that claim is only true because `deps.settle` is
  * unreachable from those paths.
+ *
+ * It is asked before the *quote*, too, when the caller names its grant. Quoting
+ * a price we would refuse to accept invites the caller to sign a transfer that
+ * can only be thrown away, and it makes the refusal look like a payment failure
+ * instead of a policy decision. Refusing here also means the refusal costs no
+ * key and no chain — which is what makes it reproducible by someone holding
+ * neither.
  */
 export async function handle(
   input: { method: string; path: string; url: string; headers: Record<string, string>; body: string },
@@ -54,6 +83,13 @@ export async function handle(
   if (!route) return { status: 404, headers: {}, body: { error: "no such route" } };
 
   const signature = input.headers[PAYMENT_SIGNATURE_HEADER];
+  const grantId = input.headers[DELEGATION_HEADER];
+
+  if (grantId) {
+    const refusal = refuse(route, grantId, deps);
+    if (refusal) return refusal;
+  }
+
   if (!signature) {
     return {
       status: 402,
@@ -62,7 +98,6 @@ export async function handle(
     };
   }
 
-  const grantId = input.headers[DELEGATION_HEADER];
   if (!grantId) {
     return {
       status: 400,
@@ -80,15 +115,6 @@ export async function handle(
 
   const requirements = requirementsFor(route, deps);
   const amount = BigInt(requirements.amount);
-  const decision = authorize(deps.store.read(), grantId, requirements.asset, amount, deps.now());
-  if (!decision.allowed) {
-    // The reason is rendered verbatim: it is the row in the results table, not UX copy.
-    return {
-      status: 403,
-      headers: { "content-type": "application/json" },
-      body: { reason: decision.reason, settled: false, grant: grantId },
-    };
-  }
 
   const settlement = await deps.settle(payload, requirements);
 
