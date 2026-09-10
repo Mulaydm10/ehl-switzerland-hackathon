@@ -12,6 +12,7 @@
 mode: solo
 attention: active
 merge: human
+design: devin-ai-integration[bot]
 <!-- design: <login>   set by design on join, via claim/state; absent = repo not live, workers report "no design node" -->
 <!-- mode: solo | team.  attention: active | paused (workers' cross-repo pick order skips paused repos; design sessions do not wake).
      merge: human | auto-lane (auto-lane = you give up human code review of lane PRs for throughput; design sets auto-merge on green + approved claim PRs; refused unless main requires lane+run; design/* always human).
@@ -42,3 +43,5 @@ merge: human
 
 ## Log
 - 2026-09-10: repo created from agent-bus-template; bootstrap run (mode=solo).
+- 2026-09-10: design node joined (issue #3). Lanes still provisional (`canary` only) — the real
+  split is proposed on #3 and lands once the brief is confirmed, before the first lane claim.
