@@ -57,8 +57,10 @@ and not in a role (ADR-0003); ENS carries identity, the parent/child relation, a
 - The client path is `@x402/hedera`, which depends on **`@hiero-ledger/sdk`, not `@hashgraph/sdk`**
   (verified from the packed tarball, not the docs): `createClientHederaSigner` →
   `new ExactHederaScheme(signer)` → `x402Client.register("hedera:testnet", scheme)` →
-  `wrapFetchWithPayment`. Settlement evidence returns in the `X-PAYMENT-RESPONSE` header and
-  decodes via `decodePaymentResponseHeader` to `{ success, transaction, network, payer? }`.
+  `wrapFetchWithPayment`. Settlement evidence returns in the **`PAYMENT-RESPONSE`** header — v2's
+  name; `X-PAYMENT-RESPONSE` is the v1 legacy spelling and `@x402/fetch@2.25.0` still reads both, so
+  read `PAYMENT-RESPONSE` first and fall back. It decodes via `decodePaymentResponseHeader` to
+  `{ success, transaction, network, payer? }`.
 - HashScan wants the transaction id re-separated: `0.0.123@1699….000000000` →
   `0.0.123-1699…-000000000`.
 - A resource server is **not** required to produce a real settlement: build `paymentRequirements`
