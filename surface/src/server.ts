@@ -1,7 +1,11 @@
 import { createServer as createHttpServer, type Server } from "node:http";
 import type { State } from "@ehl/core";
+import { readFile } from "node:fs/promises";
 import { handle } from "./handler.js";
+import { handleDemo, type DemoDeps } from "./demo.js";
 import type { ServerDeps } from "./types.js";
+
+const UI = new URL("../public/index.html", import.meta.url);
 
 function readBody(stream: AsyncIterable<Buffer>): Promise<string> {
   return (async () => {
@@ -12,7 +16,7 @@ function readBody(stream: AsyncIterable<Buffer>): Promise<string> {
 }
 
 /** Thin transport over `handle`. All decisions live there so tests need no socket. */
-export function createServer(deps: ServerDeps, origin = "http://localhost"): Server {
+export function createServer(deps: ServerDeps, demo?: DemoDeps, origin = "http://localhost"): Server {
   return createHttpServer((request, response) => {
     void (async () => {
       const url = new URL(request.url ?? "/", origin);
@@ -20,7 +24,16 @@ export function createServer(deps: ServerDeps, origin = "http://localhost"): Ser
       for (const [name, value] of Object.entries(request.headers)) {
         if (typeof value === "string") headers[name.toLowerCase()] = value;
       }
-      const reply = await handle(
+      if (demo && (url.pathname === "/" || url.pathname === "/index.html")) {
+        response.writeHead(200, { "content-type": "text/html; charset=utf-8" });
+        response.end(await readFile(UI, "utf8"));
+        return;
+      }
+
+      const demoReply = demo
+        ? await handleDemo({ method: request.method ?? "GET", path: url.pathname, query: url.searchParams }, deps, demo)
+        : undefined;
+      const reply = demoReply ?? await handle(
         {
           method: request.method ?? "GET",
           path: url.pathname,

@@ -20,6 +20,7 @@ export function requirementsFor(route: Route, deps: ServerDeps): Requirements {
     asset: route.asset,
     payTo: deps.payTo,
     maxTimeoutSeconds: 60,
+    extra: deps.feePayer === undefined ? {} : { feePayer: deps.feePayer },
   };
 }
 

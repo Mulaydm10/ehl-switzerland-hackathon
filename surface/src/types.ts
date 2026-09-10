@@ -3,12 +3,15 @@ import type { AssetId, State } from "@ehl/core";
 /** The x402 v2 `PaymentRequirements` this server quotes. One per paid route. */
 export type Requirements = {
   scheme: "exact";
-  network: string;
+  /** CAIP-2, e.g. `hedera:testnet`. */
+  network: `${string}:${string}`;
   /** Smallest unit of `asset` — tinybars for HBAR. Never a decimal amount. */
   amount: string;
   asset: AssetId;
   payTo: string;
   maxTimeoutSeconds: number;
+  /** Scheme-specific terms. Hedera puts the facilitator's `feePayer` here. */
+  extra: Record<string, unknown>;
 };
 
 /** The x402 v2 `PaymentRequired` envelope returned with a 402. */
@@ -48,9 +51,15 @@ export type Store = {
 export type ServerDeps = {
   routes: Route[];
   payTo: string;
-  network: string;
+  network: `${string}:${string}`;
   store: Store;
   settle: Settler;
+  /**
+   * Account the facilitator co-signs with, discovered from its `/supported`
+   * endpoint. Quoted in `extra` because the payer's SDK refuses to sign for a
+   * fee payer the facilitator does not advertise.
+   */
+  feePayer?: string;
   /** Injected so tests control the validity window without waiting. */
   now: () => number;
 };

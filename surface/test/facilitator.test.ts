@@ -11,6 +11,7 @@ const requirements: Requirements = {
   asset: HBAR,
   payTo: "0.0.999",
   maxTimeoutSeconds: 60,
+  extra: {},
 };
 
 const realFetch = globalThis.fetch;
