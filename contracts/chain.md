@@ -13,25 +13,34 @@ deployment, and Hedera testnet settlement of x402 payments through Blocky402. `c
 These were checked against primary sources, not docs or Discord. **ADR-0003's standing hazard
 applies: do not add a fact here without naming the artifact you fetched.**
 
-### ENSv2 (hackathon Sepolia deployment — isolated from ordinary ENS Sepolia)
+### ENSv2 on Sepolia
 
 | what | value | how verified |
 |---|---|---|
+| Universal Resolver (**use this**) | `0xeEeEEEeE14D718C2B47D9923Deab1335E144EeEe` | `eth_call` on Sepolia at block 11675328: `vitalik.eth` resolves to `0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045` via resolver `0xae66c62AcAE72098BdAc57d8E8AED53EF000b2Ba` |
 | `PermissionedResolverImpl` | `0xa9d3814ab151bf6e37a427432795371a8361614e` | deployments page |
 | initializer **present** | `initialize((address,uint256)[],bytes[])` \u2192 selector `33cc44a0` | `eth_getCode` on Sepolia, selector found in bytecode |
 | initializer **absent** | `initialize(address,uint256)` \u2192 selector `cd6dc687` | same fetch, selector **not** in bytecode |
-| `UpgradableUniversalResolverProxy` | `0xd26f2040d083af1cd2962ba303f4bea0c4faf142` | deployments page |
+| `UpgradableUniversalResolverProxy` `0xd26f2040d083af1cd2962ba303f4bea0c4faf142` | **do not use** | `eth_call` on Sepolia, same block: reverts `0x77209fe8` (`ResolverNotFound`) for every `.eth` name tried |
 | MockUSDC | `0xcbfd80f74375c54e545af34788ff465f96f66f05` | deployments page |
 
-Two consequences that each cost an afternoon if missed:
+Three consequences that each cost an afternoon if missed:
 
 1. **The documented initializer does not exist on-chain.** Calling `initialize(address,uint256)`
    reverts with empty data. Use the `Grant[]` form: `Grant = (address account, uint256 roleBitmap)`,
    so a call passes an array of `(account, roleBitmap)` pairs plus a `bytes[]` of follow-on calls.
-2. **viem and ethers hardcode a Universal Resolver address.** It must be overridden to the
-   hackathon `UpgradableUniversalResolverProxy` above, or every lookup silently resolves against the
-   *wrong deployment* and appears simply "not found". Do this once, in one place, and export it —
-   do not let each caller construct its own client.
+2. **Do not override the Universal Resolver address, and never pin an implementation.** This
+   contract used to say the opposite: point viem/ethers at `UpgradableUniversalResolverProxy`
+   above. That was wrong twice over. The ENSv2 docs warn that an address taken from a deployments
+   table can be superseded while the canonical proxy stays current, and that particular address is
+   already dead for resolution. The canonical proxy is the **same address on mainnet and Sepolia**,
+   so targeting the ENSv2 test deployment is nothing more than selecting the Sepolia chain. Keep the
+   constant in one place (`chain/src/ens.ts`, `UNIVERSAL_RESOLVER`) so this correction has one home.
+3. **A name has three states, not two.** No resolver in the registry chain (a revert) is a different
+   fact from a resolver that answers with the zero address or an empty string. The first means the
+   name was never registered; the second is what a cleared — that is, revoked — record looks like
+   from outside. A refusal must be able to say which, so a revert is an answer to render, never an
+   exception to propagate.
 
 ENS roles are a **boolean bitmap**, not a balance. That is why the allowance lives in `core/` state
 and not in a role (ADR-0003); ENS carries identity, the parent/child relation, and revocation.
@@ -77,11 +86,24 @@ submission text** — see ADR-0003.
 ## Required exports
 
 ```ts
-resolveAgent(name): Promise<AgentIdentity>       // via the overridden Universal Resolver
-grantOnChain(parent, child, roles): Promise<TxReceipt>
-revokeOnChain(parent, child): Promise<TxReceipt>
+// identity — reads only: no key, no gas. SEPOLIA_RPC_URL is the whole configuration.
+resolveAddress(caller, name): Promise<Resolution<string>>
+resolveText(caller, name, key): Promise<Resolution<string>>
+vouchesFor(caller, name, address): Promise<boolean>   // does the name still assert this signer?
+
+// payment
 payForRequest(required: PaymentRequired, signer): Promise<Settlement>   // Settlement carries the HashScan URL
 ```
+
+`Resolution<T>` is `{ kind: "ok", value, resolver } | { kind: "unset", resolver } | { kind:
+"unresolvable", error }` — the three states above, made unignorable by the type rather than by a
+comment.
+
+The write half of ENS revocation (`grantOnChain` / `revokeOnChain`, previously required here) is
+**deferred, not dropped**: publishing a record needs a funded Sepolia account, which we do not have.
+Until one exists no lane may claim a revocation is published onchain. What the demo may show is the
+read half — `vouchesFor` going false — and its virtue is that anyone can check it against Sepolia
+without trusting our server.
 
 `payForRequest` takes the whole `PaymentRequired` envelope, not one `PaymentRequirements` entry:
 in x402 v2 the resource URL lives on the envelope (`ResourceInfo.url`), so a bare requirements
