@@ -8,9 +8,9 @@ The delegation and allowance algebra, as **pure functions over explicit state**.
 *whether a payment is allowed*; it never performs one.
 
 **Hard rule: no network, no chain SDK, no clock, no `process.env`.** No `viem`, no
-`@hashgraph/sdk`, no `fetch`. Time and randomness enter as arguments. This is what makes the money
-logic property-testable with no testnet, no faucet, and no flaky CI — and it is the lane that keeps
-working when a testnet is down at 3am.
+`@hiero-ledger/sdk` (the SDK `@x402/hedera` actually pulls in), no `fetch`. Time and randomness
+enter as arguments. This is what makes the money logic property-testable with no testnet, no
+faucet, and no flaky CI — and it is the lane that keeps working when a testnet is down at 3am.
 
 ## Model
 

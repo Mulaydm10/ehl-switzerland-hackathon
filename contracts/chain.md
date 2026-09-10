@@ -50,8 +50,21 @@ and not in a role (ADR-0003); ENS carries identity, the parent/child relation, a
 - `extra.feePayer` must match what the facilitator advertises at `GET /supported`, or the client
   SDK throws before signing. The facilitator's fee-payer co-signs at settlement, so the payer is not
   the only signer on the wire.
-- Rate limits: **10 req/s, 10,000 settlements/day per API key.** Do not put a retry loop in the
-  demo path without a ceiling.
+- **Testnet needs no API key.** Base URL `https://api.testnet.blocky402.com` (or `http://localhost:3002`
+  locally); network id `hedera:testnet`. The `X-Api-Key` header and the 10 req/s + 10,000
+  settlements/day quota are **mainnet-only, per key**, and mainnet is unreleased — so neither
+  applies to us. Retry loops still need a ceiling.
+- The client path is `@x402/hedera`, which depends on **`@hiero-ledger/sdk`, not `@hashgraph/sdk`**
+  (verified from the packed tarball, not the docs): `createClientHederaSigner` →
+  `new ExactHederaScheme(signer)` → `x402Client.register("hedera:testnet", scheme)` →
+  `wrapFetchWithPayment`. Settlement evidence returns in the **`PAYMENT-RESPONSE`** header — v2's
+  name; `X-PAYMENT-RESPONSE` is the v1 legacy spelling and `@x402/fetch@2.25.0` still reads both, so
+  read `PAYMENT-RESPONSE` first and fall back. It decodes via `decodePaymentResponseHeader` to
+  `{ success, transaction, network, payer? }`.
+- HashScan wants the transaction id re-separated: `0.0.123@1699….000000000` →
+  `0.0.123-1699…-000000000`.
+- A resource server is **not** required to produce a real settlement: build `paymentRequirements`
+  yourself and `POST /settle` to the facilitator. The transfer and its HashScan link are real.
 
 ### The single-use account ceiling — adopted from PlanBound, credited
 
@@ -67,8 +80,12 @@ submission text** — see ADR-0003.
 resolveAgent(name): Promise<AgentIdentity>       // via the overridden Universal Resolver
 grantOnChain(parent, child, roles): Promise<TxReceipt>
 revokeOnChain(parent, child): Promise<TxReceipt>
-payForRequest(requirements, signer): Promise<Settlement>   // Settlement carries the HashScan URL
+payForRequest(required: PaymentRequired, signer): Promise<Settlement>   // Settlement carries the HashScan URL
 ```
+
+`payForRequest` takes the whole `PaymentRequired` envelope, not one `PaymentRequirements` entry:
+in x402 v2 the resource URL lives on the envelope (`ResourceInfo.url`), so a bare requirements
+entry cannot say what it is paying for (verified against `@x402/core@2.25.0`'s types).
 
 `Settlement` **must** carry the explorer URL and the raw transaction id. The HashScan link is the
 evidence the whole submission rests on; a payment we cannot link to is worth nothing to us.
