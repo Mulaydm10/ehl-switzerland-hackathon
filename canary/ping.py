@@ -3,3 +3,5 @@
 
 def ping() -> str:
     return "pong"
+
+# canary: exercised against PR #6 (three-lane split, verify.txt + setup.sh change).
