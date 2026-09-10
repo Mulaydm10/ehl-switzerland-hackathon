@@ -14,6 +14,10 @@ Status vocabulary, deliberately small:
 - **blocked** — the code path exists and the blocker is named; nothing is claimed.
 - **not run** — implemented, nobody has executed it yet.
 
+A refusal costs no key, no funds, and no chain: the server decides before it quotes a price. So the
+refusal rows are reproducible by a judge holding nothing at all, and are recorded separately from
+the settling rows, whose evidence is a HashScan link nobody can fabricate.
+
 ## Sponsor claims
 
 | # | Claim | How to reproduce | Evidence | Status |
@@ -32,9 +36,9 @@ Status vocabulary, deliberately small:
 | # | Claim | How to reproduce | Evidence | Status |
 |---|---|---|---|---|
 | C-1 | A child may be granted only a subset of its parent's authority; attenuation holds at every hop | `npm test --prefix core` | property tests, depth 1–5 | proven |
-| C-2 | Over-budget requests are refused with a reason a caller can act on (`OVER_LIMIT`), not a bare deny | `DEMO-0002` | *(screenshot / transcript)* | not run |
-| C-3 | Revoking a parent refuses the whole subtree, and reports *which* — `REVOKED` vs `PARENT_REVOKED` | `DEMO-0003` | *(screenshot / transcript)* | not run |
-| C-4 | Revoking one child leaves its sibling unaffected | `DEMO-0004` | *(screenshot / transcript)* | not run |
+| C-2 | Over-budget requests are refused with a reason a caller can act on (`OVER_LIMIT`), not a bare deny | `DEMO-0002`, no credentials of any kind | `surface/evidence/demo-0002-over-limit.png`, transcript in `surface/evidence/refusals-no-credentials.txt` | proven |
+| C-3 | Revoking a parent refuses the whole subtree, and reports *which* — `REVOKED` vs `PARENT_REVOKED` | `DEMO-0003`, no credentials | `surface/evidence/demo-0003-revoked.png` (`REVOKED`, the cut grant); `PARENT_REVOKED` for a descendant asserted in `surface/test/handler.test.ts` | proven for `REVOKED`; `PARENT_REVOKED` offline only |
+| C-4 | Revoking one child leaves its sibling unaffected | `DEMO-0004` | sibling reaches the payment step untouched (transcript, same file); the settlement that would finish it is H-1 | blocked — the *unaffected* half needs the Hedera key |
 
 ## Prior art credited, per ADR-0003 and ADR-0004
 
