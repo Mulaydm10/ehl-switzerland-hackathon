@@ -19,7 +19,9 @@ from the files in this repo alone.
 4. `COMPETITION.md` — event facts, single source of truth (currently all `TODO(Dhruv)` — **event
    identity itself is unresolved**, see Q-0001)
 5. `GOVERNANCE.md` — who owns what, LOCKED vs. not
-6. `AGENTS.md` — multi-agent concurrency model
+6. `AGENTS.md` — agent-bus protocol (claiming/lanes/PRs, live since the 2026-09-10 graft); the
+   hackathon-specific concurrency model (surface ownership, escalation) moved to
+   `AGENTS-project.md` — read both
 7. `worklog.md` (recent tail) — how we got to the current state
 8. `experiments/experiment_log.md` — what's been tried
 

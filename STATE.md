@@ -1,8 +1,13 @@
-# STATE
+# STATE (root)
 
 This file is the **live snapshot** and is deliberately **overwritten** every session — that is
 correct behavior, not data loss. If this file and `worklog.md` ever disagree about what is true
 *right now*, **STATE.md wins**; the worklog only explains how we got here.
+
+> **Owns:** the hackathon's live project snapshot — deadline countdown, done/in-flight/blocked,
+> next step, the open-questions status. Any human or agent (Devin included) may update it.
+> **Does not own:** bus mode/merge/lanes — that's `docs/STATE.md`, design-owned (Devin, via
+> `claim/state`). Don't put lane rows or `mode:`/`merge:` here; don't put project narrative there.
 
 **Last updated:** 2026-09-10 13:31 (local) — by hackathon-setup agent (initial scaffold)
 

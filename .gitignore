@@ -16,3 +16,8 @@ Thumbs.db
 !.env.example
 
 # logs/ and scratch/ have their own local .gitignore whitelists; nothing to add here for them.
+
+# agent-bus
+__pycache__/
+.pytest_cache/
+.venv/

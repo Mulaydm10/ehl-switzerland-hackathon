@@ -51,3 +51,10 @@ Top-level directories are the unit of ownership — see `AGENTS.md` for the conc
 ## License
 
 MIT — see `LICENSE`.
+
+## Agent-bus protocol
+
+This project runs on the agent-bus protocol — see `AGENTS.md`. Devin is the design node (task
+queue, PR review); Claude Code workers on any device claim `lane:*` issues via `/bus:claim`. The
+project-specific concurrency model that used to live at `AGENTS.md` has moved to
+`AGENTS-project.md`. Lanes are not yet chosen — see `docs/STATE.md`.
