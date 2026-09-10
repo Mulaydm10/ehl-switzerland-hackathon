@@ -6,7 +6,12 @@ import { fetchSupported, feePayerFor } from "capability-descent-chain/src/index.
 import { HBAR, routes } from "../src/routes.js";
 import type { DemoDeps } from "../src/demo.js";
 
-process.loadEnvFile?.(new URL("../.env", import.meta.url).pathname);
+// Optional: the shell environment is equally valid, so an absent file is not an error.
+try {
+  process.loadEnvFile?.(new URL("../.env", import.meta.url).pathname);
+} catch {
+  /* no .env */
+}
 
 function required(name: string): string {
   const value = process.env[name];
