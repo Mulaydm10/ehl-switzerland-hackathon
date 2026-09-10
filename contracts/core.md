@@ -39,11 +39,15 @@ currency conversion anywhere in `core/` — two different `AssetId`s never compa
 
 ```ts
 grant(state, parentGrantId, child, request): Result<Grant>
-authorize(state, grantId, amount, now): Decision        // pure; no side effects
-consume(state, grantId, amount, now): Result<State>     // authorize + record
-revoke(state, grantId): State                           // subtree, see below
+authorize(state, grantId, asset, amount, now): Decision      // pure; no side effects
+consume(state, grantId, asset, amount, now): Result<State>   // authorize + record
+revoke(state, grantId): State                                // subtree, see below
 remaining(state, grantId): bigint
 ```
+
+`asset` is passed on every call and is not optional: a 402 quotes both a price *and* the asset it
+wants paid in, and a grant that only checks the number would let a quote denominated in something
+else spend against it. Comparing it here is the only place `ASSET_MISMATCH` can be reached.
 
 `Decision` is `{ allowed: true }` or `{ allowed: false, reason: Reason }`, where `Reason` is a
 closed enum — `OVER_LIMIT`, `REVOKED`, `EXPIRED`, `NOT_YET_VALID`, `ASSET_MISMATCH`,
