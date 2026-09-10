@@ -52,18 +52,26 @@ in case this repo is later put on the agent-bus protocol, where a lane is a top-
 
 ## Canonical commands
 
-**Stack is undecided.** There is no build, run, lint, or test command yet — see
-`design/decisions/ADR-0002-stack-selection.md` and `Q-0003`. This section is `TODO(Dhruv)`.
+**Stack: TypeScript/Node** (ADR-0002); Python exists only for the bus canary.
 
-**Binding rule:** whoever resolves ADR-0002 fills in this section *and* lands a green smoke test *in
-the same change*. Do not fill in commands here without also making them pass.
+Setup once per worktree: `bash docs/setup.sh` — installs the canary's Python deps and runs an
+install in each lane directory that has a `package.json`.
+
+The authoritative per-lane test commands are `docs/verify.txt`, because that is the file CI runs.
+Do not restate them elsewhere; the copies below are the same lines:
 
 ```
-Build:  TODO(Dhruv)
-Run:    TODO(Dhruv)
-Test:   TODO(Dhruv)
-Lint:   TODO(Dhruv)
+Test (core):     npm test --prefix core
+Test (chain):    npm test --prefix chain
+Test (surface):  npm test --prefix surface
+Test (canary):   python3 -m pytest tests/canary -q
+Build / Run:     per-lane, defined by that lane's package.json scripts
+Lint:            TODO — set by the first lane PR that adds a linter, then recorded here
 ```
+
+A lane's command fails until that lane's first PR adds a `package.json` with a real `test` script.
+That is the intended order (ADR-0002 "Deviation"), not a broken baseline: design branches are
+forbidden by CI from creating files inside lane directories.
 
 ## Hard rules
 
@@ -74,8 +82,20 @@ Lint:   TODO(Dhruv)
   because you're blocked or out of turn budget. See `AGENTS.md`.
 - `DEMO.md` must stay runnable at all times once a demo path exists. Fixing a broken demo outranks
   building new features.
-- Do not add a `contracts/`, Solidity, or other onchain surface until Q-0001 (event identity)
-  resolves that it's in scope.
+- **No Solidity or other authored onchain surface**, and not because of Q-0001: ADR-0002 removed it
+  from the critical path. Hedera x402 settles a plain `TransferTransaction` and cannot call a
+  contract, and the ENSv2 contracts are already deployed by the organisers — we *call* them. Note
+  `contracts/` here means the bus's lane-interface docs (`contracts/<lane>.md`), not Solidity.
+- Q-0001 (event identity) is still formally open because `COMPETITION.md` is LOCKED and unwritten.
+  Until Dhruv writes it, **do not restate the event name or deadline anywhere** — link to
+  `COMPETITION.md` and let it stay visibly blank rather than filling it in from memory.
+- Never assert in the README, the video, or the submission text anything the demo does not actually
+  produce. Every claim traces to a row in the results table (ADR-0003).
+- Prior-art credit — PlanBound, VERA, the IETF drafts — is a required section of the submission,
+  not a courtesy (ADR-0003).
+- A claim about someone else's system is unverified until you have fetched the artifact (bytecode,
+  ABI, paper, package). One fabricated citation already survived two review passes here; see
+  ADR-0003's standing hazard.
 
 ## End-of-session checklist
 
