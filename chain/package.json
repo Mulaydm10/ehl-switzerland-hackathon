@@ -1,0 +1,21 @@
+{
+  "name": "capability-descent-chain",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Live-chain lane: Hedera x402 settlement via Blocky402, ENSv2 identity.",
+  "scripts": {
+    "test": "node --import tsx --test test/*.test.ts",
+    "typecheck": "tsc --noEmit",
+    "pay:once": "node --import tsx scripts/pay-once.ts"
+  },
+  "dependencies": {
+    "@x402/core": "2.25.0",
+    "@x402/fetch": "2.25.0",
+    "@x402/hedera": "2.25.0"
+  },
+  "devDependencies": {
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2"
+  }
+}
