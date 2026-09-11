@@ -3,15 +3,20 @@
   "private": true,
   "type": "module",
   "version": "0.1.0",
-  "exports": { ".": "./src/index.ts" },
+  "exports": {
+    ".": "./src/index.ts"
+  },
   "scripts": {
     "test": "node --import tsx --test test/*.test.ts",
     "typecheck": "tsc --noEmit",
-    "serve": "node --import tsx scripts/serve.ts"
+    "serve": "node --import tsx scripts/serve.ts",
+    "mcp": "node --import tsx scripts/mcp.ts"
   },
   "dependencies": {
+    "@ehl/core": "file:../core",
+    "@modelcontextprotocol/sdk": "^1.30.0",
     "capability-descent-chain": "file:../chain",
-    "@ehl/core": "file:../core"
+    "zod": "^3.25.76"
   },
   "devDependencies": {
     "@types/node": "^22.10.2",
