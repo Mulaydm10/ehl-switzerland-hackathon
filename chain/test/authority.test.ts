@@ -1,21 +1,23 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { AbiCoder, Interface, dnsEncode, namehash } from "ethers";
+import { AbiCoder, Interface, dnsEncode, keccak256, namehash, toUtf8Bytes } from "ethers";
 import {
-  ROLE_CLEAR,
+  ROLE_LINK,
+  ROLE_SET_ADDRESS,
+  ROLE_SET_DATA,
+  ROLE_SET_NAME,
   ROLE_SET_TEXT,
   ROOT_RESOURCE,
   adminOf,
-  authorizeNameCall,
-  authorizeTextCall,
-  clearRecordsCall,
-  eacResource,
-  nameResource,
-  partHashText,
-  partHashUint,
+  grantSetterRolesCall,
   preflight,
+  requirementOf,
+  revokeRolesCall,
+  setAddressCall,
+  setDataCall,
   setTextCall,
   textResource,
+  uintResource,
 } from "../src/authority.js";
 import type { Caller } from "../src/ens.js";
 
@@ -51,47 +53,91 @@ function caller(onWrite: (tx: { to: string; data: string; from?: string }) => Pr
 }
 
 // ---------------------------------------------------------------------------
-// EAC resource arithmetic. These vectors come from ENS's own published
-// calculator; a mismatch means our code is wrong, never theirs.
+// Selectors. These are the assertions that would have caught the first version
+// of this module, which encoded a plausible ABI nobody has deployed: every one
+// is checked against the runtime bytecode at 0xa9d3814a… on Sepolia.
 // ---------------------------------------------------------------------------
 
-test("the resource for a text key matches ENS's own calculator", () => {
+test("every built call carries a selector the deployed resolver implements", () => {
+  const selectors = {
+    "setText(bytes,string,string)": "0xc7279f88",
+    "setAddress(bytes,uint256,bytes)": "0xb4436dde",
+    "setData(bytes,string,bytes)": "0xeb4b73bb",
+    "grantSetterRoles(bytes,address)": "0xccd3eaff",
+    "revokeRoles(uint256,uint256,address)": "0xdfa70d8b",
+  };
+  const built = [
+    setTextCall("alice.eth", "k", "v"),
+    setAddressCall("alice.eth", 60n, "0x" + "11".repeat(20)),
+    setDataCall("alice.eth", "k", "0x1234"),
+    grantSetterRolesCall(setTextCall("alice.eth", "k", "v"), CHILD),
+    revokeRolesCall(textResource("k"), ROLE_SET_TEXT, CHILD),
+  ];
+  for (const call of built) {
+    assert.equal(call.data.slice(0, 10), selectors[call.signature as keyof typeof selectors]);
+  }
+});
+
+test("the node-keyed setters of the other PermissionedResolver are never built", () => {
+  // `setText(bytes32,string,string)`, `setAddr(bytes32,address)`,
+  // `clearRecords(bytes32)` and `authorize*Roles` exist on the contracts
+  // repo's default branch but are absent from the deployed bytecode. Encoding
+  // one produces calldata that reverts wordlessly, which reads exactly like a
+  // permission refusal.
+  const absent = ["0x10f13a8c", "0xd5fa2b00", "0x3603d758", "0xf2d1eb25"];
+  const built = [
+    setTextCall("alice.eth", "k", "v"),
+    setAddressCall("alice.eth", 60n, "0x00"),
+    grantSetterRolesCall(setTextCall("alice.eth", "k", "v"), CHILD),
+  ].map((c) => c.data.slice(0, 10));
+  for (const selector of absent) assert.ok(!built.includes(selector));
+});
+
+// ---------------------------------------------------------------------------
+// EAC resources. The deployed resolver scopes by setter *argument*: the proxy
+// is per-account, so there is no name in the resource at all.
+// ---------------------------------------------------------------------------
+
+test("a text resource is the hash of the key alone, with no name mixed in", () => {
+  assert.equal(textResource("avatar"), BigInt(keccak256(toUtf8Bytes("avatar"))));
   assert.equal(
-    partHashText("avatar"),
-    "0xd1f86c93d831119ad98fe983e643a7431e4ac992e3ead6e3007f4dd1adf66343",
+    textResource("avatar"),
+    BigInt("0xd1f86c93d831119ad98fe983e643a7431e4ac992e3ead6e3007f4dd1adf66343"),
   );
-  assert.equal(
-    namehash("alice.eth"),
-    "0x787192fc5378cc32aa956ddfdedbf26b24e8d78e40109add0eea2c1a012c3dec",
-  );
-  assert.equal(
-    textResource("alice.eth", "avatar"),
-    BigInt("0xbd3188d6161ab4bb96e293c8c6f6798ba575ab0b7b78481a28dd86aad5cdeb1a"),
+  // A name-scoped resource would be a different number, and one no setter on
+  // the deployed implementation ever checks.
+  assert.notEqual(
+    textResource("avatar"),
+    BigInt(keccak256(coder.encode(["bytes32", "bytes32"], [namehash("alice.eth"), keccak256(toUtf8Bytes("avatar"))]))),
   );
 });
 
-test("the all-zero resource is the root, not a hash of zeroes", () => {
-  // The contract short-circuits this case. Hashing it instead would produce a
-  // resource that looks plausible and can never match a permission.
-  assert.equal(eacResource("0x" + "00".repeat(32), "0x" + "00".repeat(32)), ROOT_RESOURCE);
-  assert.notEqual(nameResource("alice.eth"), ROOT_RESOURCE);
+test("a uint-keyed resource hashes the word, not its decimal text", () => {
+  assert.equal(uintResource(60n), uintResource(BigInt(60)));
+  assert.notEqual(uintResource(60n), textResource("60"));
 });
 
-test("a name-wide resource is not a record-level one", () => {
-  assert.notEqual(nameResource("alice.eth"), textResource("alice.eth", "avatar"));
-});
-
-test("a uint-keyed part hashes the word, not its decimal text", () => {
-  assert.equal(partHashUint(60n), partHashUint(BigInt(60)));
-  assert.notEqual(partHashUint(60n), partHashText("60"));
+test("no resource derived from an argument is the root resource", () => {
+  // The contract asserts this: a root grant would cover every key, and cannot
+  // be reached through `grantSetterRoles`.
+  assert.notEqual(textResource(""), ROOT_RESOURCE);
+  assert.notEqual(uintResource(0n), ROOT_RESOURCE);
+  assert.equal(ROOT_RESOURCE, 0n);
 });
 
 test("admin roles live 128 bits up and survive the shift", () => {
   assert.equal(adminOf(ROLE_SET_TEXT), ROLE_SET_TEXT << 128n);
-  // The reason every role here is a bigint: ROLE_CLEAR alone is 1 << 32, and
-  // its admin counterpart is 1 << 160 — far past what a number holds exactly.
-  assert.equal(ROLE_CLEAR, 4294967296n);
-  assert.equal(adminOf(ROLE_CLEAR).toString(16), "1" + "0".repeat(40));
+  // The reason every role here is a bigint: ROLE_LINK's admin counterpart is
+  // 1 << 156, far past what a number holds exactly.
+  assert.equal(ROLE_LINK, 268435456n);
+  assert.equal(adminOf(ROLE_LINK).toString(16), "1" + "0".repeat(39));
+});
+
+test("the deployed role bits are nybble-spaced in the deployed order", () => {
+  assert.equal(ROLE_SET_ADDRESS, 1n);
+  assert.equal(ROLE_SET_TEXT, 1n << 4n);
+  assert.equal(ROLE_SET_NAME, 1n << 20n);
+  assert.equal(ROLE_SET_DATA, 1n << 24n);
 });
 
 // ---------------------------------------------------------------------------
@@ -99,53 +145,68 @@ test("admin roles live 128 bits up and survive the shift", () => {
 // every one of these mistakes encodes and broadcasts happily.
 // ---------------------------------------------------------------------------
 
-test("authorize takes a DNS-encoded name, never a namehash", () => {
-  const call = authorizeTextCall("alice.eth", "avatar", CHILD, true);
+test("setters take a DNS-encoded name, never a namehash", () => {
+  const call = setTextCall("alice.eth", "allowance", "revoked");
   const encoded = dnsEncode("alice.eth");
   assert.equal(encoded, "0x05616c6963650365746800");
   assert.ok(call.data.includes(encoded.slice(2)));
   assert.ok(!call.data.includes(namehash("alice.eth").slice(2)));
 });
 
-test("setText takes a namehash, never a DNS-encoded name", () => {
-  const call = setTextCall("alice.eth", "allowance", "revoked");
-  assert.ok(call.data.includes(namehash("alice.eth").slice(2)));
-  assert.ok(!call.data.includes(dnsEncode("alice.eth").slice(2)));
+test("the root name is reachable, and encodes as 0x", () => {
+  const abi = new Interface(["function setText(bytes name, string key, string value)"]);
+  const call = setTextCall("", "allowance", "revoked");
+  assert.equal(String(abi.decodeFunctionData("setText", call.data)[0]), "0x");
 });
 
-test("revocation is the grant call with one bit flipped", () => {
-  // This is the whole design claim: taking authority back is not a second
-  // mechanism, exactly as in core's algebra.
-  const grant = authorizeTextCall("alice.eth", "allowance", CHILD, true);
-  const revoke = authorizeTextCall("alice.eth", "allowance", CHILD, false);
-  const abi = new Interface([
-    "function authorizeTextRoles(bytes toName, string key, address account, bool grant)",
-  ]);
-  const a = abi.decodeFunctionData("authorizeTextRoles", grant.data);
-  const b = abi.decodeFunctionData("authorizeTextRoles", revoke.data);
-
-  assert.equal(grant.signature, revoke.signature);
-  assert.deepEqual(a.slice(0, 3).map(String), b.slice(0, 3).map(String));
-  assert.equal(a[3], true);
-  assert.equal(b[3], false);
+test("an address record is opaque bytes for a coin type, not an address word", () => {
+  const abi = new Interface(["function setAddress(bytes name, uint256 coinType, bytes value)"]);
+  const call = setAddressCall("alice.eth", 60n, "0x" + "ab".repeat(20));
+  const args = abi.decodeFunctionData("setAddress", call.data);
+  assert.equal(BigInt(String(args[1])), 60n);
+  assert.equal(String(args[2]), "0x" + "ab".repeat(20));
 });
 
-test("a role bitmap survives the round trip through calldata", () => {
-  const roles = ROLE_SET_TEXT | ROLE_CLEAR | adminOf(ROLE_SET_TEXT);
-  const call = authorizeNameCall("alice.eth", roles, CHILD, true);
-  const abi = new Interface([
-    "function authorizeNameRoles(bytes toName, uint256 roleBitmap, address account, bool grant)",
-  ]);
-  const args = abi.decodeFunctionData("authorizeNameRoles", call.data);
-  assert.equal(BigInt(String(args[1])), roles);
+test("a grant delegates exactly the setter call it carries", () => {
+  // Delegation names the call the child may make; the resolver derives role and
+  // resource from it. Nothing else can be granted.
+  const setter = setTextCall("alice.eth", "allowance", "1000");
+  const grant = grantSetterRolesCall(setter, CHILD);
+  const abi = new Interface(["function grantSetterRoles(bytes setter, address account)"]);
+  const args = abi.decodeFunctionData("grantSetterRoles", grant.data);
+  assert.equal(String(args[0]), setter.data);
+  assert.equal(String(args[1]), CHILD);
 });
 
-test("the empty name means any name, and encodes as 0x", () => {
-  const call = authorizeNameCall("", ROLE_SET_TEXT, CHILD, true);
+test("revocation targets the same resource and role the grant implied", () => {
+  // The two calls are different methods here, so the only thing keeping them
+  // in agreement is this derivation being shared.
+  const setter = setTextCall("alice.eth", "allowance", "1000");
+  const need = requirementOf(setter);
+  assert.ok(need);
+  assert.equal(need.resource, textResource("allowance"));
+  assert.equal(need.roleBitmap, ROLE_SET_TEXT);
+
   const abi = new Interface([
-    "function authorizeNameRoles(bytes toName, uint256 roleBitmap, address account, bool grant)",
+    "function revokeRoles(uint256 resource, uint256 roleBitmap, address account)",
   ]);
-  assert.equal(String(abi.decodeFunctionData("authorizeNameRoles", call.data)[0]), "0x");
+  const revoke = revokeRolesCall(need.resource, need.roleBitmap, CHILD);
+  const args = abi.decodeFunctionData("revokeRoles", revoke.data);
+  assert.equal(BigInt(String(args[0])), textResource("allowance"));
+  assert.equal(BigInt(String(args[1])), ROLE_SET_TEXT);
+});
+
+test("each setter's requirement names its own role and keyed argument", () => {
+  assert.deepEqual(requirementOf(setDataCall("alice.eth", "k", "0x00")), {
+    resource: textResource("k"),
+    roleBitmap: ROLE_SET_DATA,
+  });
+  assert.deepEqual(requirementOf(setAddressCall("alice.eth", 60n, "0x00")), {
+    resource: uintResource(60n),
+    roleBitmap: ROLE_SET_ADDRESS,
+  });
+  // A grant is not itself a setter: it has no keyed argument of its own.
+  assert.equal(requirementOf(grantSetterRolesCall(setTextCall("a.eth", "k", "v"), CHILD)), undefined);
 });
 
 test("no built call carries a destination", () => {
@@ -153,8 +214,8 @@ test("no built call carries a destination", () => {
   // single most expensive mistake available in this module.
   const calls = [
     setTextCall("alice.eth", "k", "v"),
-    clearRecordsCall("alice.eth"),
-    authorizeTextCall("alice.eth", "k", CHILD, false),
+    setDataCall("alice.eth", "k", "0x00"),
+    grantSetterRolesCall(setTextCall("alice.eth", "k", "v"), CHILD),
   ];
   for (const call of calls) {
     assert.equal("to" in call, false);
@@ -168,11 +229,13 @@ test("no built call carries a destination", () => {
 
 test("preflight sends to the discovered resolver, as the given sender", async () => {
   const { caller: c, writes } = caller(async () => "0x");
-  const call = authorizeTextCall("alice.eth", "allowance", CHILD, false);
+  const call = setTextCall("alice.eth", "allowance", "revoked");
 
   const answer = await preflight(c, "alice.eth", call, PARENT);
 
   assert.equal(answer.kind, "accepted");
+  if (answer.kind !== "accepted") return;
+  assert.equal(answer.resource, textResource("allowance"));
   assert.equal(writes.length, 1);
   assert.equal(writes[0]!.to, RESOLVER);
   assert.equal(writes[0]!.from, PARENT);
@@ -180,7 +243,7 @@ test("preflight sends to the discovered resolver, as the given sender", async ()
 });
 
 test("an unauthorized sender is a named refusal, not an exception", async () => {
-  const resource = textResource("alice.eth", "allowance");
+  const resource = textResource("allowance");
   const revert = eacAbi.encodeErrorResult("EACUnauthorizedAccountRoles", [
     resource,
     ROLE_SET_TEXT,
@@ -199,12 +262,28 @@ test("an unauthorized sender is a named refusal, not an exception", async () => 
   assert.equal(answer.resolver, RESOLVER);
 });
 
+test("a resolver without the profile says so by name", async () => {
+  const abi = new Interface(["error UnsupportedResolverProfile(bytes4 selector)"]);
+  const { caller: c } = caller(async () => {
+    throw Object.assign(new Error("execution reverted"), {
+      data: abi.encodeErrorResult("UnsupportedResolverProfile", ["0xdeadbeef"]),
+    });
+  });
+
+  const answer = await preflight(c, "alice.eth", setTextCall("alice.eth", "k", "v"), CHILD);
+
+  assert.equal(answer.kind, "refused");
+  if (answer.kind !== "refused") return;
+  assert.equal(answer.selector, "0x7b1c461b");
+  assert.match(answer.reason, /does not implement 0xdeadbeef/);
+});
+
 test("an unrecognised revert is still a refusal, reported by selector", async () => {
   const { caller: c } = caller(async () => {
     throw Object.assign(new Error("execution reverted"), { data: "0xdeadbeef" + "00".repeat(32) });
   });
 
-  const answer = await preflight(c, "alice.eth", clearRecordsCall("alice.eth"), CHILD);
+  const answer = await preflight(c, "alice.eth", setDataCall("alice.eth", "k", "0x00"), CHILD);
 
   assert.equal(answer.kind, "refused");
   if (answer.kind !== "refused") return;
@@ -213,8 +292,8 @@ test("an unrecognised revert is still a refusal, reported by selector", async ()
 });
 
 test("a revert with no data is a wordless refusal, not a failure to ask", async () => {
-  // A legacy resolver with no such method reverts empty. The chain answered;
-  // only its vocabulary is missing.
+  // A resolver with no such method reverts empty. The chain answered; only its
+  // vocabulary is missing.
   const { caller: c } = caller(async () => {
     throw Object.assign(new Error("missing revert data"), { code: "CALL_EXCEPTION" });
   });
@@ -233,7 +312,7 @@ test("a transport failure is unresolvable, never a refusal", async () => {
     throw Object.assign(new Error("boom"), { shortMessage: "could not coalesce error" });
   });
 
-  const answer = await preflight(c, "alice.eth", clearRecordsCall("alice.eth"), CHILD);
+  const answer = await preflight(c, "alice.eth", setTextCall("alice.eth", "k", "v"), CHILD);
 
   assert.equal(answer.kind, "unresolvable");
   if (answer.kind !== "unresolvable") return;
@@ -249,7 +328,7 @@ test("a name with no resolver is unresolvable before anything is simulated", asy
     },
   };
 
-  const answer = await preflight(c, "nope.eth", clearRecordsCall("nope.eth"), PARENT);
+  const answer = await preflight(c, "nope.eth", setTextCall("nope.eth", "k", "v"), PARENT);
 
   assert.equal(answer.kind, "unresolvable");
   assert.equal(calls, 1);

@@ -4,7 +4,7 @@ import {
   dnsEncode,
   getAddress,
   keccak256,
-  namehash,
+  toBeHex,
   toUtf8Bytes,
 } from "ethers";
 import { resolveAddress, type Caller } from "./ens.js";
@@ -18,26 +18,36 @@ import { resolveAddress, type Caller } from "./ens.js";
  * signed transaction — costs money, and none of it happens here.
  *
  * ENSv2's Enhanced Access Control is the onchain mirror of `core/`'s algebra: a
- * parent grants a child one role, scoped to one record on one name, and revokes
- * it with the same call and `grant: false`. The *amount* still lives in `core/`
- * because a role is a boolean and not a balance (ADR-0003); what lives here is
- * the question of who may write at all.
+ * parent grants a child one role, scoped to one record key, and takes it back
+ * with `revokeRoles`. The *amount* still lives in `core/` because a role is a
+ * boolean and not a balance (ADR-0003); what lives here is the question of who
+ * may write at all.
  *
  * The resolver's address is never configured. In ENSv2 each account gets its
  * own `PermissionedResolver` proxy, so the only honest way to address a call is
  * to ask the Universal Resolver which resolver answers for the name — which is
  * what `Resolution.resolver` has been carrying all along.
+ *
+ * Every signature, role bit and resource below is taken from the implementation
+ * actually deployed on Sepolia (`0xa9d3814a…`, whose runtime bytecode contains
+ * `setText(bytes,string,string)`, `setAddress(bytes,uint256,bytes)` and
+ * `grantSetterRoles(bytes,address)` and does *not* contain the `bytes32`-node
+ * setters or `authorize*Roles`), i.e. the record-id refactor of
+ * `PermissionedResolver` rather than the per-name version on the contracts'
+ * default branch. Where the two disagree, the deployed one wins: it is the one
+ * a transaction would reach.
  */
 
-/** `PermissionedResolverLib` roles. Nybble-spaced, so `bigint` is not optional:
- *  `1 << 32` is already wrong as a JS number in the sign bit sense, and the
- *  admin shift below overflows a `number` outright. */
-export const ROLE_SET_ADDR = 1n << 0n;
+/** `PermissionedResolverLib` roles, as deployed. Nybble-spaced, so `bigint` is
+ *  not optional: the admin shift below overflows a `number` outright. */
+export const ROLE_SET_ADDRESS = 1n << 0n;
 export const ROLE_SET_TEXT = 1n << 4n;
-export const ROLE_SET_NAME = 1n << 24n;
-export const ROLE_SET_ALIAS = 1n << 28n;
-export const ROLE_CLEAR = 1n << 32n;
-export const ROLE_SET_DATA = 1n << 36n;
+export const ROLE_SET_CONTENTHASH = 1n << 8n;
+export const ROLE_SET_ABI = 1n << 12n;
+export const ROLE_SET_INTERFACE = 1n << 16n;
+export const ROLE_SET_NAME = 1n << 20n;
+export const ROLE_SET_DATA = 1n << 24n;
+export const ROLE_LINK = 1n << 28n;
 
 /** Every role has exactly one admin counterpart, 128 bits up: holding it is
  *  what lets a parent hand the base role to someone else. Hierarchical
@@ -46,46 +56,36 @@ export function adminOf(role: bigint): bigint {
   return role << 128n;
 }
 
-/** `resource(0, 0)`, the registry-wide resource. A role held here applies to
- *  every name, which is why granting it is never what a parent wants. */
+/** The registry-wide resource. A role held here applies to *every* key of that
+ *  record type, which is why granting it is never what a parent wants — and why
+ *  the contract refuses to derive it from a setter argument. */
 export const ROOT_RESOURCE = 0n;
 
 const coder = AbiCoder.defaultAbiCoder();
 
-/** Record-type identifier for a string-keyed record (`partHash(string)`). */
-export function partHashText(key: string): string {
-  return keccak256(toUtf8Bytes(key));
-}
-
-/** Record-type identifier for a uint256-keyed record (`partHash(uint256)`) —
- *  coin types for `addr`, and data keys. Note this is `keccak256` of the
- *  32-byte word, not of its decimal text. */
-export function partHashUint(value: bigint): string {
-  return keccak256(coder.encode(["uint256"], [value]));
-}
-
-const ZERO_PART = "0x" + "00".repeat(32);
-
 /**
- * `keccak256(node, part)` — the EAC resource a write is checked against.
+ * The EAC resource for a string-keyed setter argument — a text or data key.
  *
- * The all-zero case is special-cased to `0` by the contract, so computing it
- * here would silently produce a resource that is *not* `ROOT_RESOURCE` and a
- * permission check that can never match.
+ * `keccak256(bytes(key))`, with no name mixed in. The deployed resolver scopes
+ * permissions by *argument*, not by name: the proxy is per-account, so the name
+ * dimension is the proxy itself. Hashing a namehash in here would compute a
+ * resource no setter ever checks, and every grant would silently miss.
  */
-export function eacResource(node: string, part: string): bigint {
-  if (BigInt(node) === 0n && BigInt(part) === 0n) return ROOT_RESOURCE;
-  return BigInt(keccak256(coder.encode(["bytes32", "bytes32"], [node, part])));
+export function textResource(key: string): bigint {
+  return BigInt(keccak256(toUtf8Bytes(key)));
 }
 
-/** The name-wide resource: a grant here covers every record of that type. */
-export function nameResource(name: string): bigint {
-  return eacResource(namehash(name), ZERO_PART);
+/** The EAC resource for a uint256-keyed setter argument — a coin type for
+ *  `setAddress`, a content type for `setABI`. `keccak256` of the 32-byte word,
+ *  not of its decimal text. */
+export function uintResource(value: bigint): bigint {
+  return BigInt(keccak256(coder.encode(["uint256"], [value])));
 }
 
-/** The resource for one text key on one name — the narrowest grant available. */
-export function textResource(name: string, key: string): bigint {
-  return eacResource(namehash(name), partHashText(key));
+/** The EAC resource for a `bytes4`-keyed setter argument — an interface id.
+ *  Hashed over 4 bytes, not over a 32-byte word. */
+export function interfaceResource(interfaceId: string): bigint {
+  return BigInt(keccak256(interfaceId));
 }
 
 /**
@@ -98,12 +98,11 @@ export type UnsignedCall = {
 };
 
 const resolverAbi = new Interface([
-  "function setText(bytes32 node, string key, string value)",
-  "function setAddr(bytes32 node, address addr)",
-  "function clearRecords(bytes32 node)",
-  "function authorizeNameRoles(bytes toName, uint256 roleBitmap, address account, bool grant) returns (bool)",
-  "function authorizeTextRoles(bytes toName, string key, address account, bool grant) returns (bool)",
-  "function authorizeAddrRoles(bytes toName, uint256 coinType, address account, bool grant) returns (bool)",
+  "function setText(bytes name, string key, string value)",
+  "function setAddress(bytes name, uint256 coinType, bytes addressBytes)",
+  "function setData(bytes name, string key, bytes value)",
+  "function grantSetterRoles(bytes setter, address account) returns (bool)",
+  "function revokeRoles(uint256 resource, uint256 roleBitmap, address account) returns (bool)",
 ]);
 
 function build(signature: string, name: string, args: unknown[]): UnsignedCall {
@@ -111,71 +110,100 @@ function build(signature: string, name: string, args: unknown[]): UnsignedCall {
 }
 
 /** Publish a text record. The child's allowance is *not* what goes here — see
- *  ADR-0003 — but its parent, its status and its revocation are. */
+ *  ADR-0003 — but its parent, its status and its revocation are.
+ *
+ *  The name is **DNS-encoded**: the deployed setters take the name itself and
+ *  hash it internally. A namehash passed here encodes fine and writes to a
+ *  record nobody reads. */
 export function setTextCall(name: string, key: string, value: string): UnsignedCall {
-  return build("setText(bytes32,string,string)", "setText", [namehash(name), key, value]);
+  return build("setText(bytes,string,string)", "setText", [encodeName(name), key, value]);
 }
 
-/** Clear every record on a name at once, by bumping its version. The blunt form
- *  of revocation: it needs `ROLE_CLEAR` on the name, not on a record. */
-export function clearRecordsCall(name: string): UnsignedCall {
-  return build("clearRecords(bytes32)", "clearRecords", [namehash(name)]);
+/** Publish an address record for one coin type. ENSIP-9/19 addresses are opaque
+ *  bytes, not `address` — the deployed resolver has no `setAddr(bytes32,address)`. */
+export function setAddressCall(
+  name: string,
+  coinType: bigint,
+  addressBytes: string,
+): UnsignedCall {
+  return build("setAddress(bytes,uint256,bytes)", "setAddress", [
+    encodeName(name),
+    coinType,
+    addressBytes,
+  ]);
+}
+
+/** Publish a data record (ENSIP-24) — arbitrary bytes under a string key. */
+export function setDataCall(name: string, key: string, value: string): UnsignedCall {
+  return build("setData(bytes,string,bytes)", "setData", [encodeName(name), key, value]);
 }
 
 /**
- * Grant or revoke roles across a whole name.
+ * Delegate exactly the authority one setter call would need.
  *
- * `grant` is the entire difference between delegation and revocation, which is
- * the same shape `core/` has: authority is one fact, and taking it back is not
- * a different mechanism.
+ * The argument is the setter's own calldata: the resolver decodes it, derives
+ * the role and the resource from the keyed argument, and grants that pair. So a
+ * parent delegates by *naming the call it is willing to let the child make*,
+ * which is the closest onchain analogue of `core/`'s attenuation — you cannot
+ * ask for a role you cannot express as a call.
  *
- * The name argument is **DNS-encoded**, not a namehash — the contract hashes it
- * itself. Passing a namehash here compiles, encodes, and authorizes a resource
- * nobody owns.
+ * Grants are argument-scoped, never root-scoped: the contract asserts the
+ * derived resource is non-zero. Plain `grantRoles` is disabled on this
+ * implementation (it reverts `EACCannotGrantRoles`), so this is the only grant
+ * path, and `revokeRolesCall` is its inverse.
  */
-export function authorizeNameCall(
-  name: string,
+export function grantSetterRolesCall(setter: UnsignedCall, account: string): UnsignedCall {
+  return build("grantSetterRoles(bytes,address)", "grantSetterRoles", [
+    setter.data,
+    getAddress(account),
+  ]);
+}
+
+/** Take a role back. Revocation is resource-and-bitmap shaped rather than
+ *  call-shaped, so `resourceOf` exists to keep the two sides in agreement. */
+export function revokeRolesCall(
+  resource: bigint,
   roleBitmap: bigint,
   account: string,
-  grant: boolean,
 ): UnsignedCall {
-  return build(
-    "authorizeNameRoles(bytes,uint256,address,bool)",
-    "authorizeNameRoles",
-    [encodeName(name), roleBitmap, getAddress(account), grant],
-  );
+  return build("revokeRoles(uint256,uint256,address)", "revokeRoles", [
+    resource,
+    roleBitmap,
+    getAddress(account),
+  ]);
 }
 
-/** Grant or revoke `ROLE_SET_TEXT` for exactly one key on one name. */
-export function authorizeTextCall(
-  name: string,
-  key: string,
-  account: string,
-  grant: boolean,
-): UnsignedCall {
-  return build(
-    "authorizeTextRoles(bytes,string,address,bool)",
-    "authorizeTextRoles",
-    [encodeName(name), key, getAddress(account), grant],
-  );
-}
+/** What a setter call will be checked against: the role it needs and the
+ *  resource its keyed argument names. Mirrors the resolver's `decodeSetter`, so
+ *  a grant and the later revoke of that same grant cannot drift apart. */
+export type Requirement = { readonly resource: bigint; readonly roleBitmap: bigint };
 
-/** Grant or revoke `ROLE_SET_ADDR` for one coin type on one name. */
-export function authorizeAddrCall(
-  name: string,
-  coinType: bigint,
-  account: string,
-  grant: boolean,
-): UnsignedCall {
-  return build(
-    "authorizeAddrRoles(bytes,uint256,address,bool)",
-    "authorizeAddrRoles",
-    [encodeName(name), coinType, getAddress(account), grant],
-  );
+export function requirementOf(setter: UnsignedCall): Requirement | undefined {
+  const selector = setter.data.slice(0, 10);
+  const tail = "0x" + setter.data.slice(10);
+  switch (selector) {
+    case resolverAbi.getFunction("setText")!.selector: {
+      const [, key] = coder.decode(["bytes", "string", "string"], tail);
+      return { resource: textResource(String(key)), roleBitmap: ROLE_SET_TEXT };
+    }
+    case resolverAbi.getFunction("setData")!.selector: {
+      const [, key] = coder.decode(["bytes", "string", "bytes"], tail);
+      return { resource: textResource(String(key)), roleBitmap: ROLE_SET_DATA };
+    }
+    case resolverAbi.getFunction("setAddress")!.selector: {
+      const [, coinType] = coder.decode(["bytes", "uint256", "bytes"], tail);
+      return { resource: uintResource(BigInt(String(coinType))), roleBitmap: ROLE_SET_ADDRESS };
+    }
+    default:
+      // Authorization calls have no keyed argument of their own, and profiles
+      // this module does not build are not ours to guess at.
+      return undefined;
+  }
 }
 
 /** `dnsEncode("")` is `0x`, and `dnsEncode` itself will not produce it — but the
- *  empty name means "any name" to `authorize*`, so it has to be reachable. */
+ *  empty name is the root name the default record is managed through, so it has
+ *  to be reachable. */
 function encodeName(name: string): string {
   return name === "" ? "0x" : dnsEncode(name);
 }
@@ -206,6 +234,8 @@ const eacAbi = new Interface([
   "error EACMaxAssignees(uint256 resource, uint256 role)",
   "error EACMinAssignees(uint256 resource, uint256 role)",
   "error EACInvalidRoleBitmap(uint256 roleBitmap)",
+  "error EACInvalidAccount()",
+  "error UnsupportedResolverProfile(bytes4 selector)",
   "error Error(string message)",
   "error Panic(uint256 code)",
 ]);
@@ -226,7 +256,7 @@ export async function preflight(
   name: string,
   call: UnsignedCall,
   from: string,
-  resource: bigint = nameResource(name),
+  resource: bigint = requirementOf(call)?.resource ?? ROOT_RESOURCE,
 ): Promise<Preflight> {
   const found = await resolveAddress(caller, name);
   if (found.kind === "unresolvable") {
@@ -277,6 +307,8 @@ function explain(data: string, selector: string): string {
       return `caller may not grant roles ${hex(parsed.args[1])} on resource ${hex(parsed.args[0])}`;
     case "EACCannotRevokeRoles":
       return `caller may not revoke roles ${hex(parsed.args[1])} on resource ${hex(parsed.args[0])}`;
+    case "UnsupportedResolverProfile":
+      return `resolver does not implement ${String(parsed.args[0])}`;
     case "Error":
       return String(parsed.args[0]);
     default:
@@ -285,7 +317,7 @@ function explain(data: string, selector: string): string {
 }
 
 function hex(value: unknown): string {
-  return `0x${BigInt(String(value)).toString(16)}`;
+  return toBeHex(BigInt(String(value)));
 }
 
 function reverted(cause: unknown): boolean {

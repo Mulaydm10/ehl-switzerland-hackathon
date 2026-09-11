@@ -2,7 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { loadChainEnv } from "../src/env.js";
 import { testnetCaller } from "../src/ens.js";
-import { authorizeTextCall, preflight, setTextCall } from "../src/authority.js";
+import { grantSetterRolesCall, preflight, setTextCall } from "../src/authority.js";
 
 loadChainEnv();
 
@@ -46,7 +46,10 @@ test("writing a record on a name we do not own is refused, not accepted", { skip
 
 test("delegating a text role we cannot delegate is refused too", { skip }, async () => {
   const caller = testnetCaller(rpcUrl!);
-  const call = authorizeTextCall("vitalik.eth", "agent:allowance", STRANGER, true);
+  const call = grantSetterRolesCall(
+    setTextCall("vitalik.eth", "agent:allowance", "1"),
+    STRANGER,
+  );
 
   const answer = await preflight(caller, "vitalik.eth", call, STRANGER);
 
@@ -54,4 +57,47 @@ test("delegating a text role we cannot delegate is refused too", { skip }, async
   assert.equal(answer.kind, "refused");
   if (answer.kind !== "refused") return;
   assert.match(answer.resolver, /^0x[0-9a-fA-F]{40}$/);
+});
+
+/**
+ * The assertion that decides whether any of the above means anything.
+ *
+ * Every signature in `authority.ts` is taken from the `PermissionedResolver`
+ * implementation deployed on Sepolia, and an ABI derived from the contracts
+ * repo's default branch would be a different, plausible, entirely undeployed
+ * one — its calls revert wordlessly, which is indistinguishable from a
+ * permission refusal. So the selectors are checked against the deployed
+ * runtime bytecode itself, which is the only artifact that cannot be out of
+ * date with the chain.
+ */
+const IMPLEMENTATION = "0xa9d3814ab151bf6e37a427432795371a8361614e";
+
+test("the deployed implementation implements the selectors we build", { skip }, async () => {
+  const response = await fetch(rpcUrl!, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({
+      jsonrpc: "2.0",
+      id: 1,
+      method: "eth_getCode",
+      params: [IMPLEMENTATION, "latest"],
+    }),
+  });
+  const code = ((await response.json()) as { result?: string }).result ?? "";
+  assert.ok(code.length > 2, "no code at the implementation address");
+
+  const built = [
+    setTextCall("alice.eth", "k", "v"),
+    grantSetterRolesCall(setTextCall("alice.eth", "k", "v"), STRANGER),
+  ];
+  for (const call of built) {
+    assert.ok(
+      code.includes(call.data.slice(2, 10)),
+      `${call.signature} is not in the deployed bytecode`,
+    );
+  }
+  // And the node-keyed setters we used to build are not there at all.
+  for (const absent of ["10f13a8c", "d5fa2b00", "3603d758", "f2d1eb25"]) {
+    assert.ok(!code.includes(absent), `unexpected ${absent} in deployed bytecode`);
+  }
 });
