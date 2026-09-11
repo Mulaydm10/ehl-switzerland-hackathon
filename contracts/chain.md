@@ -18,7 +18,7 @@ applies: do not add a fact here without naming the artifact you fetched.**
 | what | value | how verified |
 |---|---|---|
 | Universal Resolver (**use this**) | `0xeEeEEEeE14D718C2B47D9923Deab1335E144EeEe` | `eth_call` on Sepolia at block 11675328: `vitalik.eth` resolves to `0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045` via resolver `0xae66c62AcAE72098BdAc57d8E8AED53EF000b2Ba` |
-| `PermissionedResolverImpl` | `0xa9d3814ab151bf6e37a427432795371a8361614e` | deployments page |
+| `PermissionedResolverImpl` | `0xa9d3814ab151bf6e37a427432795371a8361614e` — **not a send target**, see the write-side section | deployments page; its bytecode advertises no resolver getter or setter |
 | initializer **present** | `initialize((address,uint256)[],bytes[])` \u2192 selector `33cc44a0` | `eth_getCode` on Sepolia, selector found in bytecode |
 | initializer **absent** | `initialize(address,uint256)` \u2192 selector `cd6dc687` | same fetch, selector **not** in bytecode |
 | `UpgradableUniversalResolverProxy` `0xd26f2040d083af1cd2962ba303f4bea0c4faf142` | **do not use** | `eth_call` on Sepolia, same block: reverts `0x77209fe8` (`ResolverNotFound`) for every `.eth` name tried |
@@ -44,6 +44,37 @@ Three consequences that each cost an afternoon if missed:
 
 ENS roles are a **boolean bitmap**, not a balance. That is why the allowance lives in `core/` state
 and not in a role (ADR-0003); ENS carries identity, the parent/child relation, and revocation.
+
+### ENSv2 write side — the parent's authority over a child's record
+
+Verified 2026-09-11 against the Permissioned Resolver docs and against Sepolia bytecode at block
+`0xb241b0`. Read this before writing a single setter call: the address this contract used to name is
+not one you can send to.
+
+| what | value | how verified |
+|---|---|---|
+| there is **no shared resolver** | each account gets its own `PermissionedResolver`, a UUPS proxy deployed by the Verifiable Factory; all names owned by that account share it | ENSv2 Permissioned Resolver docs |
+| `0xa9d3814ab151bf6e37a427432795371a8361614e` — **do not send to it** | its deployed code advertises neither `addr(bytes32)` (`3b3b57de`) nor `text(bytes32,string)` (`59d1d43c`) nor any setter (`d5fa2b00`, `10f13a8c`, `8b95dd71`) | `eth_getCode` on Sepolia, opcode-walked for `PUSH4` and for left-aligned `PUSH32` selector compares — a substring grep is not evidence here |
+| the resolver address is therefore **discovered, never configured** | `resolve()`'s second return value, which `Resolution.resolver` already carries | `chain/src/ens.ts` |
+| role bitmap | `ROLE_SET_ADDR = 1 << 0`, `ROLE_SET_TEXT = 1 << 4`, `ROLE_CLEAR = 1 << 32`, `ROLE_SET_DATA = 1 << 36`, admin counterpart at `role << 128` | docs; 4-bit spacing, so these are `bigint`s and not numbers |
+| grant **and** revoke are one call | `authorizeNameRoles(dnsName, roleBitmap, account, grant)`, `authorizeTextRoles(dnsName, key, account, grant)` — `true` grants, `false` revokes | docs; `grantRoles`/`revokeRoles` are **disabled** on this resolver |
+| EAC resource | `keccak256(node, part)`, where `part` is `bytes32(0)` name-wide, `keccak256(bytes(key))` for a text key, `keccak256(abi.encode(coinType))` for an address | recomputed locally: `namehash("alice.eth")` + `partHash("avatar")` → `0xbd3188d6161ab4bb96e293c8c6f6798ba575ab0b7b78481a28dd86aad5cdeb1a`, identical to the docs' own resource calculator |
+| permission is checked at **four** resources | `ROOT_RESOURCE`, `resource(0, part)`, `resource(node, 0)`, `resource(node, part)`; any one granting the role allows the write | docs — a name-level grant is a superset of a record-level one |
+| every `authorize*` and `setAlias` argument naming a name is **DNS-encoded**, not a namehash | `dnsEncode("alice.eth")` = `0x05616c6963650365746800` | recomputed locally; matches the docs' example byte for byte |
+| removing an alias uses `0x` | `0x00` is the DNS encoding of the root name and would *set* an alias | docs |
+
+Why this matters beyond plumbing: **EAC is the onchain mirror of `core/`'s algebra.** A parent
+grants a child `ROLE_SET_TEXT` scoped to exactly one text key on exactly one name, and revokes it
+with the same call and `false`. The amount still lives in `core/` — a role is a boolean, not a
+balance (ADR-0003) — but *who may speak for a child's record* is onchain, hierarchical, and
+revocable by the parent alone.
+
+**Broadcast is the only part that needs money.** Building the call, computing its EAC resource, and
+asking the deployed resolver what it thinks of it are all free `eth_call` work. An unauthorized
+simulated sender must produce a **decoded, named refusal** — which is itself evidence that the call
+shape reaches authorization instead of reverting on decode — and that is the strongest claim
+available without a funded account. It is not the same claim as a published record, and no lane may
+blur them.
 
 ### Hedera x402 / Blocky402
 
@@ -99,11 +130,29 @@ payForRequest(required: PaymentRequired, signer): Promise<Settlement>   // Settl
 "unresolvable", error }` — the three states above, made unignorable by the type rather than by a
 comment.
 
-The write half of ENS revocation (`grantOnChain` / `revokeOnChain`, previously required here) is
-**deferred, not dropped**: publishing a record needs a funded Sepolia account, which we do not have.
-Until one exists no lane may claim a revocation is published onchain. What the demo may show is the
-read half — `vouchesFor` going false — and its virtue is that anyone can check it against Sepolia
-without trusting our server.
+The write half is **built up to the broadcast**, which is the only step that costs money:
+
+```ts
+// authority — pure: builds the call, computes the resource, signs nothing, sends nothing.
+eacResource(name, part): string                       // keccak256(node, part)
+partHashText(key): string                             // keccak256(bytes(key))
+partHashCoin(coinType: bigint): string                // keccak256(abi.encode(coinType))
+setTextCall(name, key, value): UnsignedCall           // { data } — `to` comes from discovery
+authorizeTextCall(name, key, account, grant): UnsignedCall
+authorizeNameCall(name, roles: bigint, account, grant): UnsignedCall
+
+// authority — live, still key-free and gas-free.
+preflight(caller, name, call, from): Promise<Preflight>
+```
+
+`Preflight` is `{ kind: "accepted", resolver } | { kind: "refused", resolver, reason } | { kind:
+"unresolvable", error }` — the same three-state discipline as `Resolution`, for the same reason: a
+revert from an unauthorized sender is the expected answer and must be rendered, not thrown.
+
+Until a funded Sepolia account exists **no lane may claim a record was published onchain.** What the
+demo may show is the read half — `vouchesFor` going false — plus a preflighted call whose refusal the
+deployed resolver itself produced. Both are checkable against Sepolia by anyone, without trusting
+our server.
 
 `payForRequest` takes the whole `PaymentRequired` envelope, not one `PaymentRequirements` entry:
 in x402 v2 the resource URL lives on the envelope (`ResourceInfo.url`), so a bare requirements
