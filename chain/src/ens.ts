@@ -21,9 +21,12 @@ const recordAbi = new Interface([
   "function text(bytes32 node, string key) view returns (string)",
 ]);
 
-/** The minimum of a provider this module needs: one `eth_call`. */
+/** The minimum of a provider this module needs: one `eth_call`.
+ *
+ *  `from` is optional and unused by reads, but a simulated *write* is only
+ *  meaningful when the resolver is told who is asking (`authority.ts`). */
 export type Caller = {
-  call(tx: { to: string; data: string }): Promise<string>;
+  call(tx: { to: string; data: string; from?: string }): Promise<string>;
 };
 
 export function testnetCaller(rpcUrl: string): Caller {
