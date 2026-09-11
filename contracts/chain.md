@@ -47,34 +47,46 @@ and not in a role (ADR-0003); ENS carries identity, the parent/child relation, a
 
 ### ENSv2 write side — the parent's authority over a child's record
 
-Verified 2026-09-11 against the Permissioned Resolver docs and against Sepolia bytecode at block
-`0xb241b0`. Read this before writing a single setter call: the address this contract used to name is
-not one you can send to.
+Verified 2026-09-11 against the `PermissionedResolver` **runtime bytecode** at
+`0xa9d3814ab151bf6e37a427432795371a8361614e` on Sepolia (15,511 bytes, `eth_getCode`) and against the
+matching contract source. Read this before writing a single setter call — and note the shape of the
+mistake it corrects, because it is the standing hazard in `CLAUDE.md` with teeth: the first version
+of this section described the *documented* resolver, whose methods are not the deployed ones. Calling
+an absent selector reverts **with no data**, which is indistinguishable from a permission refusal, so
+a wrong ABI here produces confident green tests and no error anywhere.
 
 | what | value | how verified |
 |---|---|---|
 | there is **no shared resolver** | each account gets its own `PermissionedResolver`, a UUPS proxy deployed by the Verifiable Factory; all names owned by that account share it | ENSv2 Permissioned Resolver docs |
-| `0xa9d3814ab151bf6e37a427432795371a8361614e` — **do not send to it** | its deployed code advertises neither `addr(bytes32)` (`3b3b57de`) nor `text(bytes32,string)` (`59d1d43c`) nor any setter (`d5fa2b00`, `10f13a8c`, `8b95dd71`) | `eth_getCode` on Sepolia, opcode-walked for `PUSH4` and for left-aligned `PUSH32` selector compares — a substring grep is not evidence here |
+| `0xa9d3814ab151bf6e37a427432795371a8361614e` — **do not send to it** | it is the implementation, not a proxy; it advertises no resolver getter (`3b3b57de`, `59d1d43c`) | `eth_getCode` on Sepolia, opcode-walked for `PUSH4` and left-aligned `PUSH32` selector compares — a substring grep is not evidence here |
 | the resolver address is therefore **discovered, never configured** | `resolve()`'s second return value, which `Resolution.resolver` already carries | `chain/src/ens.ts` |
-| role bitmap | `ROLE_SET_ADDR = 1 << 0`, `ROLE_SET_TEXT = 1 << 4`, `ROLE_CLEAR = 1 << 32`, `ROLE_SET_DATA = 1 << 36`, admin counterpart at `role << 128` | docs; 4-bit spacing, so these are `bigint`s and not numbers |
-| grant **and** revoke are one call | `authorizeNameRoles(dnsName, roleBitmap, account, grant)`, `authorizeTextRoles(dnsName, key, account, grant)` — `true` grants, `false` revokes | docs; `grantRoles`/`revokeRoles` are **disabled** on this resolver |
-| EAC resource | `keccak256(node, part)`, where `part` is `bytes32(0)` name-wide, `keccak256(bytes(key))` for a text key, `keccak256(abi.encode(coinType))` for an address | recomputed locally: `namehash("alice.eth")` + `partHash("avatar")` → `0xbd3188d6161ab4bb96e293c8c6f6798ba575ab0b7b78481a28dd86aad5cdeb1a`, identical to the docs' own resource calculator |
-| permission is checked at **four** resources | `ROOT_RESOURCE`, `resource(0, part)`, `resource(node, 0)`, `resource(node, part)`; any one granting the role allows the write | docs — a name-level grant is a superset of a record-level one |
-| every `authorize*` and `setAlias` argument naming a name is **DNS-encoded**, not a namehash | `dnsEncode("alice.eth")` = `0x05616c6963650365746800` | recomputed locally; matches the docs' example byte for byte |
-| removing an alias uses `0x` | `0x00` is the DNS encoding of the root name and would *set* an alias | docs |
+| setters **present** in the deployed code | `setText(bytes,string,string)` `c7279f88`, `setAddress(bytes,uint256,bytes)` `b4436dde`, `setData(bytes,string,bytes)` `eb4b73bb`, `setName(bytes,string)` `0ce0112a`, `linkToNode(bytes,bytes32)` `5d27b8e5` | selector scan of the fetched runtime bytecode |
+| setters **absent** — do not encode these | `setText(bytes32,string,string)` `10f13a8c`, `setAddr(bytes32,address)` `d5fa2b00`, `clearRecords(bytes32)` `3603d758`, `authorizeNameRoles` / `authorizeTextRoles` / `authorizeAddrRoles` | same scan; they belong to a different, undeployed variant of this contract |
+| grant | `grantSetterRoles(bytes setter, address account)` `ccd3eaff` — you pass the **encoded setter call** the account may make, and the resolver derives role and resource from it via its own `decodeSetter` | bytecode + source; `grantRoles(uint256,uint256,address)` exists but reverts `EACCannotGrantRoles` |
+| revoke | `revokeRoles(uint256 resource, uint256 roleBitmap, address account)` `dfa70d8b` — a **different method**, taking both explicitly | same |
+| role bitmap | `ROLE_SET_ADDRESS = 1 << 0`, `ROLE_SET_TEXT = 1 << 4`, `ROLE_SET_CONTENTHASH = 1 << 8`, `ROLE_SET_ABI = 1 << 12`, `ROLE_SET_INTERFACE = 1 << 16`, `ROLE_SET_NAME = 1 << 20`, `ROLE_SET_DATA = 1 << 24`, `ROLE_LINK = 1 << 28`, admin counterpart at `role << 128` | `PermissionedResolverLib` source; 4-bit spacing and a 128-bit admin shift, so these are `bigint`s and not numbers |
+| EAC resource | `keccak256` of the setter's **keyed argument alone** — `bytes(key)` for text/data, the 32-byte word for a coin type, 4 bytes for an interface id. **No node.** | `PermissionedResolverLib.resource` overloads; `keccak256("avatar")` = `0xd1f86c93…f66343` |
+| a resource is **not** name-scoped | the proxy is already per-account, so the name is implied by which contract you call | source: `resource()` takes only the argument; `decodeSetter` asserts the result is never `ROOT_RESOURCE` |
+| every name argument is **DNS-encoded**, not a namehash — setters included | `dnsEncode("alice.eth")` = `0x05616c6963650365746800`; the root name is `0x` | recomputed locally |
 
-Why this matters beyond plumbing: **EAC is the onchain mirror of `core/`'s algebra.** A parent
-grants a child `ROLE_SET_TEXT` scoped to exactly one text key on exactly one name, and revokes it
-with the same call and `false`. The amount still lives in `core/` — a role is a boolean, not a
-balance (ADR-0003) — but *who may speak for a child's record* is onchain, hierarchical, and
-revocable by the parent alone.
+Why this matters beyond plumbing: **EAC is the onchain mirror of `core/`'s algebra**, but a coarser
+one than this contract originally claimed. A parent grants a child `ROLE_SET_TEXT` on exactly one
+text *key*, and revokes it by naming that key's resource and role. The amount still lives in `core/`
+— a role is a boolean, not a balance (ADR-0003) — and so does **per-name attenuation**, because a
+role granted on `key = "agent:allowance"` holds for that key across every name the proxy serves.
+What ENS carries is identity, the parent/child relation, and revocation; what it does not carry is
+one child's allowance being smaller than its sibling's.
+
+Because grant and revoke are separate methods, a lane implementing them must derive
+`(resource, roleBitmap)` **once** and use it for both — the resolver derives it for the grant, so a
+wrong role constant is invisible until the matching revocation silently clears nothing.
 
 **Broadcast is the only part that needs money.** Building the call, computing its EAC resource, and
-asking the deployed resolver what it thinks of it are all free `eth_call` work. An unauthorized
-simulated sender must produce a **decoded, named refusal** — which is itself evidence that the call
-shape reaches authorization instead of reverting on decode — and that is the strongest claim
-available without a funded account. It is not the same claim as a published record, and no lane may
-blur them.
+asking the deployed resolver what it thinks of it are all free `eth_call` work. But a refusal is
+only evidence if the selector exists: an empty revert may equally mean the method is absent, so a
+lane claiming preflight evidence must pin its selectors against fetched bytecode. A **decoded, named**
+EAC refusal is the strongest claim available without a funded account. It is not the same claim as a
+published record, and no lane may blur them.
 
 ### Hedera x402 / Blocky402
 
@@ -133,21 +145,29 @@ comment.
 The write half is **built up to the broadcast**, which is the only step that costs money:
 
 ```ts
-// authority — pure: builds the call, computes the resource, signs nothing, sends nothing.
-eacResource(name, part): string                       // keccak256(node, part)
-partHashText(key): string                             // keccak256(bytes(key))
-partHashCoin(coinType: bigint): string                // keccak256(abi.encode(coinType))
+// authority — pure: builds the call, derives the resource, signs nothing, sends nothing.
+textResource(key): bigint                             // keccak256(bytes(key)) — no node
+uintResource(value: bigint): bigint                   // keccak256 of the 32-byte word
 setTextCall(name, key, value): UnsignedCall           // { data } — `to` comes from discovery
-authorizeTextCall(name, key, account, grant): UnsignedCall
-authorizeNameCall(name, roles: bigint, account, grant): UnsignedCall
+setAddressCall(name, coinType: bigint, bytes): UnsignedCall
+setDataCall(name, key, value): UnsignedCall
+grantSetterRolesCall(setter: UnsignedCall, account): UnsignedCall    // delegates that exact call
+revokeRolesCall(resource: bigint, roles: bigint, account): UnsignedCall
+requirementOf(setter: UnsignedCall): Requirement | undefined         // { resource, roleBitmap }
 
 // authority — live, still key-free and gas-free.
 preflight(caller, name, call, from): Promise<Preflight>
 ```
 
-`Preflight` is `{ kind: "accepted", resolver } | { kind: "refused", resolver, reason } | { kind:
-"unresolvable", error }` — the same three-state discipline as `Resolution`, for the same reason: a
-revert from an unauthorized sender is the expected answer and must be rendered, not thrown.
+`requirementOf` mirrors the resolver's own `decodeSetter`, and exists so revocation cannot drift from
+the grant: the grant's `(resource, roleBitmap)` is derived onchain, the revocation's is passed in, and
+only a shared derivation keeps them the same pair.
+
+`Preflight` is `{ kind: "accepted", resolver, resource } | { kind: "refused", resolver, selector,
+reason } | { kind: "unresolvable", error }` — the same three-state discipline as `Resolution`, for the
+same reason: a revert from an unauthorized sender is the expected answer and must be rendered, not
+thrown. `selector` is `"0x"` for an empty revert, which is the case a lane must not read as
+authorization having been reached.
 
 Until a funded Sepolia account exists **no lane may claim a record was published onchain.** What the
 demo may show is the read half — `vouchesFor` going false — plus a preflighted call whose refusal the
