@@ -1,4 +1,4 @@
-import { createTestnetClient, createTestnetSigner } from "capability-descent-chain/src/index.ts";
+import { createTestnetClient, signerForAccount } from "capability-descent-chain/src/index.ts";
 import { DELEGATION_HEADER, PAYMENT_SIGNATURE_HEADER } from "./handler.js";
 import type { PaymentRequired } from "./types.js";
 
@@ -7,10 +7,18 @@ import type { PaymentRequired } from "./types.js";
  * over HTTP against the resource server, holding only its own key and a grant
  * id. It knows nothing about allowances — that is the server's answer to give,
  * and a refusal comes back as a status and a reason, not as an exception.
+ *
+ * Asynchronous because the payer's key is checked against the one consensus
+ * publishes for the account before the server accepts any pay button: a wrong
+ * key must fail at boot, not as an `INVALID_SIGNATURE` receipt mid-demo.
  */
-export function createPayer(baseUrl: string, accountId: string, privateKey: string) {
-  const signer = createTestnetSigner(accountId, privateKey);
-  const client = createTestnetClient(signer);
+export async function createPayer(
+  baseUrl: string,
+  accountId: string,
+  privateKey: string,
+  maxTinybarPerPayment?: string,
+) {
+  const client = createTestnetClient(await signerForAccount(accountId, privateKey), maxTinybarPerPayment);
 
   return async (grant: string, path: string): Promise<{ status: number; body: unknown }> => {
     const url = new URL(path, baseUrl).toString();

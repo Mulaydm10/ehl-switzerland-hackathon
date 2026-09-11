@@ -52,6 +52,11 @@ function demoState(): State {
   return state;
 }
 
+/** The dearest price on offer, in tinybars — the payer's self-imposed ceiling. */
+function dearestRoute(): string {
+  return routes.reduce((most, route) => (BigInt(route.amount) > BigInt(most) ? route.amount : most), "0");
+}
+
 const port = Number(process.env.SURFACE_PORT ?? 8402);
 const baseUrl = `http://localhost:${port}`;
 const accountId = process.env.HEDERA_ACCOUNT_ID;
@@ -60,7 +65,11 @@ const privateKey = process.env.HEDERA_PRIVATE_KEY;
 const demo: DemoDeps = {
   reset: demoState,
   // No key: the demo refuses to pay rather than staging a receipt it cannot link.
-  ...(accountId && privateKey ? { pay: createPayer(baseUrl, accountId, privateKey) } : {}),
+  // The payer's own ceiling: the dearest route it is ever asked to pay. A quote
+  // above it is refused client-side, before the allowance is even consulted.
+  ...(accountId && privateKey
+    ? { pay: await createPayer(baseUrl, accountId, privateKey, dearestRoute()) }
+    : {}),
 };
 
 const facilitatorUrl = required("BLOCKY402_FACILITATOR_URL").replace(/\/$/, "");
