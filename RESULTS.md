@@ -22,11 +22,13 @@ the settling rows, whose evidence is a HashScan link nobody can fabricate.
 
 | # | Claim | How to reproduce | Evidence | Status |
 |---|---|---|---|---|
-| H-1 | A child agent's in-allowance request settles real HBAR on Hedera testnet | `DEMO-0001` | *(HashScan link)* | blocked — no testnet credentials |
-| H-2 | Two differently-priced routes settle the exact quoted amount, not a fixed unit | `DEMO-0001` + `DEMO-0004` (100 000 vs 250 000 tinybar) | *(two HashScan links)* | blocked — same |
+| H-1 | A child agent's in-allowance request settles real HBAR on Hedera testnet | `DEMO-0001` with `surface/.env` set | [`0.0.7162784-1789123079-478155435`](https://hashscan.io/testnet/transaction/0.0.7162784-1789123079-478155435) — `child-a` pays `/translate`, 100 000 tinybar `0.0.10328195 → 0.0.10472555`; sibling `child-b`'s is [`…-476986776`](https://hashscan.io/testnet/transaction/0.0.7162784-1789123079-476986776). Transcript: `surface/evidence/live-settlement-run.txt` | proven |
+| H-2 | Two differently-priced routes settle the exact quoted amount, not a fixed unit | `DEMO-0001` (100 000) and `POST /demo/pay?grant=parent&route=/summarize` (250 000) | the H-1 links at 100 000, plus [`0.0.7162784-1789126246-747821785`](https://hashscan.io/testnet/transaction/0.0.7162784-1789126246-747821785) at 250 000; each amount matched by `disagreement()`, which returns none | proven |
 | H-3 | A refused request reaches the facilitator **never** — refusal precedes settlement | `npm test --prefix surface` (the facilitator double is asserted un-called) | offline test, green in CI on #14 | proven (offline) |
-| H-4 | A settlement is checked against Hedera consensus, not against the facilitator's receipt | `MIRROR_LIVE=1 npm test --prefix chain` | `chain/evidence/mirror-no-credentials.txt` — live mirror-node reads of a real testnet transfer, its credit summed and matched; **no credentials of any kind** | proven |
+| H-4 | A settlement is checked against Hedera consensus, not against the facilitator's receipt | `MIRROR_LIVE=1 npm test --prefix chain` | `chain/evidence/mirror-no-credentials.txt` — live mirror-node reads of a real testnet transfer, its credit summed and matched; **no credentials of any kind**. Since H-1 it has also run against our *own* three settlements, and agreed with each | proven |
 | H-5 | A false receipt is caught and named: unknown transaction, not-successful, payee-not-credited, wrong-amount | same command, `chain/test/mirror.test.ts` + `mirror.live.test.ts` | a receipt naming a transaction consensus never saw is rejected live; the other three are unit-covered | proven for `unknown-transaction` live, offline for the rest |
+| H-6 | A payer key is proved against the key consensus publishes for the account *before* anything is signed | `npm test --prefix chain` (`chain/test/signer.test.ts`) | the same bare hex is a valid ECDSA *and* ED25519 key with different public keys; `signerForAccount` picks the published one, and `payer_key_mismatch` / `unknown_payer_account` / `payer_key_unknown` are three distinct refusals. This is the bug that produced `INVALID_SIGNATURE` on the first live run (#31) | proven (offline, and by the live run it fixed) |
+| H-7 | A payment clears two independent limits: the server's grant allowance and the payer's own per-payment ceiling | `npm test --prefix chain`; the demo server passes its dearest route as the ceiling | native HBAR is not a default x402 asset, so `createTestnetClient` declares `0.0.0` and caps it; a quote above the cap is refused client-side before a transaction is built (#31, #33) | proven (offline) |
 | E-1 | An agent's identity resolves live through ENS on Sepolia | `SEPOLIA_RPC_URL=… npm test --prefix chain` | `vitalik.eth` → `0xd8dA6BF2…96045` via resolver `0xae66c62A…b2Ba`, live test in #17 | proven |
 | E-2 | An unregistered name is distinguishable from a cleared record | same command, `ens.live.test.ts` | live revert vs. zero-address, both asserted | proven |
 | E-4 | An address's *primary name* resolves, and the name is checked to point back at the address | `SEPOLIA_RPC_URL=… npm test --prefix chain` | `chain/evidence/ens-reverse-no-credentials.txt` — `0x21A5C13B…96F8` → `kahlotyroneshoes.eth`, `mutual: true`, live | proven |
@@ -54,7 +56,7 @@ these rows**.
 | C-1 | A child may be granted only a subset of its parent's authority; attenuation holds at every hop | `npm test --prefix core` | property tests, depth 1–5 | proven |
 | C-2 | Over-budget requests are refused with a reason a caller can act on (`OVER_LIMIT`), not a bare deny | `DEMO-0002`, no credentials of any kind | `surface/evidence/demo-0002-over-limit.png`, transcript in `surface/evidence/refusals-no-credentials.txt` | proven |
 | C-3 | Revoking a parent refuses the whole subtree, and reports *which* — `REVOKED` vs `PARENT_REVOKED` | `DEMO-0003`, no credentials | `surface/evidence/demo-0003-revoked.png` (`REVOKED`, the cut grant); `PARENT_REVOKED` for a descendant asserted in `surface/test/handler.test.ts` | proven for `REVOKED`; `PARENT_REVOKED` offline only |
-| C-4 | Revoking one child leaves its sibling unaffected | `DEMO-0004`, no credentials for the authorisation half | `surface/evidence/demo-0004-sibling-no-key.png` — `child-a` revoked, `child-b` still holds its full 300 000 tinybar and passes authorisation, then stops at `no Hedera key configured`; the settlement that would finish it is H-1 | proven that the sibling is unaffected; blocked for the settlement that follows |
+| C-4 | Revoking one child leaves its sibling unaffected | `DEMO-0004`; the authorisation half needs no credentials, the settlement half needs the key | `surface/evidence/demo-0004-sibling-no-key.png` (no key: `child-b` keeps its full 300 000 and stops at `no Hedera key configured`), and with the key, `child-b`'s own settlement [`…-476986776`](https://hashscan.io/testnet/transaction/0.0.7162784-1789123079-476986776) in the same run that refused revoked `child-a` | proven, both halves |
 
 ## Prior art credited, per ADR-0003 and ADR-0004
 
@@ -69,9 +71,11 @@ Not evidence for us — evidence that we read the field before claiming anything
 
 ## What is blocked on a human, right now
 
-1. **Hedera testnet credentials** — account id + private key. Everything chain-side is written and
-   tested against a double; without these, rows H-1 and H-2 stay empty and the demo's pay button
-   answers `no Hedera key configured`, which is honest and unimpressive.
+1. ~~**Hedera testnet credentials**~~ — supplied 2026-09-11 and used; H-1, H-2 and the settling half
+   of C-4 are proven. The key was temporary and is being rotated, which costs nothing: the
+   transaction ids stay resolvable on HashScan without it. Re-running the settling scenarios needs a
+   fresh key; every refusal row and
+   every mirror-node row still needs none.
 2. **A funded Sepolia account** — unblocks E-3. The reads (E-1, E-2, E-4, E-5) need neither key nor
    gas, and are the whole ENS read surface.
 3. **A bazantic.com account** — unblocks B-1 and B-2. The MCP server (M-1) is *ours*, and does not

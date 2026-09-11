@@ -97,11 +97,18 @@ Proven, no credentials required (a judge can re-run these):
 - The delegated authority is usable by an agent host as MCP tools, with refusals as structured
   results (**M-1, M-2, M-3**).
 
+Proven on testnet, re-checkable by anyone but re-runnable only with a key of your own:
+
+- **HBAR has moved, three times, in the amounts the server quoted** — 100 000 tinybar for
+  `/translate` on behalf of `child-a` and again on behalf of its sibling `child-b`, and 250 000 for
+  the dearer `/summarize` route, each `0.0.10328195 → 0.0.10472555` on testnet and each confirmed
+  against consensus rather than against the facilitator's receipt (**H-1, H-2**). The first attempt
+  failed `INVALID_SIGNATURE`, because a bare-hex ECDSA key parses as a valid ED25519 key with a
+  different public key; the signer now proves itself against the key the account publishes before
+  signing anything (**H-6**).
+
 Not proven, and therefore not claimed anywhere:
 
-- **No HBAR has moved.** No Hedera testnet payer key was available, so there is no transaction id
-  and no HashScan link (**H-1, H-2, blocked**). The payment path is written and tested against a
-  facilitator double; that is not the same thing as a settlement, and we do not present it as one.
 - **Revocation is not published onchain.** ENS writes need a funded Sepolia account
   (**E-3, blocked**).
 - **Bazantic is not integrated.** Their prize requires an account, a gateway, an MCP server
@@ -109,13 +116,14 @@ Not proven, and therefore not claimed anywhere:
   (ADR-0004). We wrote an MCP server, which satisfies none of the rest, and an unregistered server
   scores zero on a track that measures the platform. No Bazantic claim is made (**B-1, B-2,
   blocked**).
-- **Nothing has been settled, so H-4 has never run against a payment of ours.** It runs against
-  someone else's real testnet transfer, which proves the verifier and not our payment path.
+- **The refusal rows and the verifier rows need no credential; the settling rows needed a key that
+  was temporary and is being rotated.** Anyone can re-check the three transaction ids on HashScan, but
+  re-*running* DEMO-0001 or the dearer route requires a fresh testnet key of their own.
 
 ## Sponsors we are submitting to
 
-`TODO(COMPETITION.md)` for the mechanics of selecting them. On evidence: Hedera (the settlement
-path, code-complete but unsettled) and ENS (read-side resolution, live). Bazantic is out unless its
+`TODO(COMPETITION.md)` for the mechanics of selecting them. On evidence: Hedera (settled on testnet,
+verified against consensus) and ENS (read-side resolution, live). Bazantic is out unless its
 qualification artifacts exist — two honest sponsor integrations beat three where one is a mention.
 
 ## Prior art we are standing on
@@ -158,4 +166,5 @@ Credited because a judge will find it otherwise, and because it shaped the desig
    point; a different server would need its own copy of the algebra. Onchain enforcement was cut
    because Hedera x402 settles a plain `TransferTransaction` and cannot call a contract.
 3. The demo's grant tree is seeded at startup, so scenarios are reproducible from a fresh state.
-4. No settlement has been executed. See H-1.
+4. Settlement was executed with a throwaway testnet key that is being rotated: the three
+   transaction ids stay verifiable, re-running the paying scenarios needs a new key. See H-1.
