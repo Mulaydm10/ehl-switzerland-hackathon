@@ -44,13 +44,40 @@ Three parts, deliberately separated so the money logic is testable without a cha
   (`@x402/hedera`, `@hiero-ledger/sdk`), and ENS resolution through the canonical Universal
   Resolver proxy on Sepolia.
 - `surface/` — an x402-gated resource server with two differently-priced routes (`/translate`
-  100 000 tinybar, `/summarize` 250 000 tinybar), a browser demo, and the evidence transcripts.
+  100 000 tinybar, `/summarize` 250 000 tinybar), a browser demo, the evidence transcripts, and an
+  **MCP server** that hands the same algebra to an agent host as tools.
+
+Two things were added after the first working end-to-end path, because both are checkable by a
+stranger with no credentials at all:
+
+- **We do not believe receipts.** A facilitator says a payment settled; the mirror node says what
+  consensus recorded. `confirmTransfer`/`disagreement` compare them and name the four ways a receipt
+  can be false — unknown transaction, not successful, payee not credited, wrong amount — so a
+  HashScan link is published only when the amount we claim is the amount consensus shows
+  (**H-4, H-5**).
+- **We do not accept a name at face value either.** Reverse resolution gives an address's primary
+  name; the name is then resolved forward and must point back. An address advertising a name it
+  cannot back is a named outcome, not an identity (**E-4, E-5**).
 
 The part we think is worth a judge's attention is *where* the refusal happens. The server evaluates
 the child's authority **before** it quotes a price, so an over-budget or revoked request is refused
 with a machine-actionable reason (`OVER_LIMIT`, `REVOKED`, `PARENT_REVOKED`) and the facilitator is
 never called. That is what makes the interesting half of this demo reproducible by a stranger
 holding no keys and no funds (**C-2, C-3, C-4, H-3**).
+
+## The authority as tools, not as our script
+
+A demo script that respects a budget proves nothing about a model that doesn't. So the algebra is
+also an MCP server (`npm run mcp --prefix surface`): `allowance_tree`, `check_allowance`, `spend`,
+`delegate`, `revoke_authority`, `verify_settlement`. Two design points carry the claim:
+
+- A refusal is a **successful** tool call returning `{ allowed: false, reason: "OVER_LIMIT" }`.
+  `isError` is reserved for tools that actually broke. A host that cannot tell those apart retries
+  the refusal — which is precisely the loop capped authority exists to stop.
+- `spend` re-authorises internally. `check_allowance` exists so a host can plan, not so it can be
+  trusted; skipping it, or lying about it, gains a client nothing (**M-1, M-2, M-3**).
+
+This is our own tool surface and is **not** a Bazantic integration — see below.
 
 ## What we can prove, and what we cannot
 
@@ -63,6 +90,12 @@ Proven, no credentials required (a judge can re-run these):
 - A refused request never reaches the facilitator (**H-3**, offline test).
 - An agent name resolves live through ENS on Sepolia, and an unregistered name is distinguishable
   from a cleared record (**E-1, E-2**).
+- An address's primary name resolves and is confirmed in both directions; one that cannot be
+  confirmed is refused by name (**E-4, E-5**).
+- A settlement is verified against Hedera consensus rather than against the facilitator's receipt,
+  with live mirror-node reads that need no key (**H-4, H-5**).
+- The delegated authority is usable by an agent host as MCP tools, with refusals as structured
+  results (**M-1, M-2, M-3**).
 
 Not proven, and therefore not claimed anywhere:
 
@@ -71,9 +104,13 @@ Not proven, and therefore not claimed anywhere:
   facilitator double; that is not the same thing as a settlement, and we do not present it as one.
 - **Revocation is not published onchain.** ENS writes need a funded Sepolia account
   (**E-3, blocked**).
-- **Bazantic is not integrated.** Their prize requires an account, a gateway, an MCP server, a
-  Recipe, and a controlled A/B showing repeatable improvement (ADR-0004). None of those artifacts
-  exist, so no Bazantic claim is made (**B-1, B-2, blocked**).
+- **Bazantic is not integrated.** Their prize requires an account, a gateway, an MCP server
+  registered on their platform, a Recipe, and a controlled A/B showing repeatable improvement
+  (ADR-0004). We wrote an MCP server, which satisfies none of the rest, and an unregistered server
+  scores zero on a track that measures the platform. No Bazantic claim is made (**B-1, B-2,
+  blocked**).
+- **Nothing has been settled, so H-4 has never run against a payment of ours.** It runs against
+  someone else's real testnet transfer, which proves the verifier and not our payment path.
 
 ## Sponsors we are submitting to
 
@@ -109,6 +146,7 @@ Credited because a judge will find it otherwise, and because it shaped the desig
 | Demo script | `DEMO.md` |
 | Decisions | `design/decisions/ADR-0002`, `ADR-0003`, `ADR-0004`, `ADR-0005` |
 | Sponsor capability map | `submissions/SPONSOR-DEPTH.md` — what we exercise per sponsor, and what we don't |
+| MCP server | `surface/src/mcp.ts`, run with `npm run mcp --prefix surface` (stdio) |
 | Track audit | `submissions/TRACKS.md` |
 | Bazantic username | n/a — no account (see above) |
 

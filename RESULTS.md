@@ -25,11 +25,27 @@ the settling rows, whose evidence is a HashScan link nobody can fabricate.
 | H-1 | A child agent's in-allowance request settles real HBAR on Hedera testnet | `DEMO-0001` | *(HashScan link)* | blocked — no testnet credentials |
 | H-2 | Two differently-priced routes settle the exact quoted amount, not a fixed unit | `DEMO-0001` + `DEMO-0004` (100 000 vs 250 000 tinybar) | *(two HashScan links)* | blocked — same |
 | H-3 | A refused request reaches the facilitator **never** — refusal precedes settlement | `npm test --prefix surface` (the facilitator double is asserted un-called) | offline test, green in CI on #14 | proven (offline) |
+| H-4 | A settlement is checked against Hedera consensus, not against the facilitator's receipt | `MIRROR_LIVE=1 npm test --prefix chain` | `chain/evidence/mirror-no-credentials.txt` — live mirror-node reads of a real testnet transfer, its credit summed and matched; **no credentials of any kind** | proven |
+| H-5 | A false receipt is caught and named: unknown transaction, not-successful, payee-not-credited, wrong-amount | same command, `chain/test/mirror.test.ts` + `mirror.live.test.ts` | a receipt naming a transaction consensus never saw is rejected live; the other three are unit-covered | proven for `unknown-transaction` live, offline for the rest |
 | E-1 | An agent's identity resolves live through ENS on Sepolia | `SEPOLIA_RPC_URL=… npm test --prefix chain` | `vitalik.eth` → `0xd8dA6BF2…96045` via resolver `0xae66c62A…b2Ba`, live test in #17 | proven |
 | E-2 | An unregistered name is distinguishable from a cleared record | same command, `ens.live.test.ts` | live revert vs. zero-address, both asserted | proven |
+| E-4 | An address's *primary name* resolves, and the name is checked to point back at the address | `SEPOLIA_RPC_URL=… npm test --prefix chain` | `chain/evidence/ens-reverse-no-credentials.txt` — `0x21A5C13B…96F8` → `kahlotyroneshoes.eth`, `mutual: true`, live | proven |
+| E-5 | An address advertising a name it cannot back is a *named* refusal, not a crash or an accepted identity | same command | same file: `0x9703d9cF…D1e9` → `no-forward-resolver ariutokintumi.eth`, decoded from the Universal Resolver's `ResolverNotFound(bytes)` custom error | proven |
 | E-3 | Revocation is *published* to ENS onchain | — | — | blocked — needs a funded Sepolia account; **do not claim** |
 | B-1 | A Recipe measurably improves an agent's use of our service | same prompt/model/settings, raw-API arm vs. Recipe arm (ADR-0004) | *(both transcripts, verbatim)* | blocked — needs a bazantic.com account |
 | B-2 | Our service is reachable by an agent through a Bazantic x402/MPP gateway + MCP server | *(to be written)* | — | blocked — same |
+
+## Agent-surface claims (MCP, no sponsor account)
+
+These are about our own tool server, not about Bazantic. Bazantic qualification needs their account,
+gateway, Recipe and measured runs; none of those exist and **B-1/B-2 stay blocked regardless of
+these rows**.
+
+| # | Claim | How to reproduce | Evidence | Status |
+|---|---|---|---|---|
+| M-1 | An agent host can hold the delegated authority as MCP tools, not as our demo script | `npm test --prefix surface`; run it with `npm run mcp --prefix surface` | `surface/src/mcp.ts` — six tools over `@ehl/core`; protocol tests drive the real server through the SDK's in-memory transport (#28) | proven (offline) |
+| M-2 | A policy refusal is a *successful* tool call carrying core's reason, and `isError` is reserved for tools that actually broke | same command | `{ allowed: false, reason: "OVER_LIMIT" }` with `isError` unset; a schema violation returns `isError: true` | proven (offline) |
+| M-3 | A client that skips the preflight gains nothing — `spend` re-authorises internally | same command | `spend` calls `consume` regardless of whether `check_allowance` was called | proven (offline) |
 
 ## Core claims (no sponsor, no network)
 
@@ -56,6 +72,8 @@ Not evidence for us — evidence that we read the field before claiming anything
 1. **Hedera testnet credentials** — account id + private key. Everything chain-side is written and
    tested against a double; without these, rows H-1 and H-2 stay empty and the demo's pay button
    answers `no Hedera key configured`, which is honest and unimpressive.
-2. **A funded Sepolia account** — unblocks E-3. Reads (E-1, E-2) need neither key nor gas.
-3. **A bazantic.com account** — unblocks B-1 and B-2. If it never arrives, ADR-0004's fallback is
-   two judged sponsors rather than an untested Recipe.
+2. **A funded Sepolia account** — unblocks E-3. The reads (E-1, E-2, E-4, E-5) need neither key nor
+   gas, and are the whole ENS read surface.
+3. **A bazantic.com account** — unblocks B-1 and B-2. The MCP server (M-1) is *ours*, and does not
+   substitute for any of their requirements. If it never arrives, ADR-0004's fallback is two judged
+   sponsors rather than an untested Recipe.

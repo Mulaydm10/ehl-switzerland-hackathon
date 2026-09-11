@@ -27,14 +27,19 @@ Nothing here upgrades a claim. Evidence lives in `RESULTS.md` and this file may 
 | Refusal before quote (facilitator never called on a refused request) | used | `surface/src/handler.ts` `refuse()`; **H-3** |
 | HashScan URL construction from a raw transaction id | used | `chain/src/hashscan.ts` (pure; unit-tested) |
 | Bounded retry / typed `PaymentError` | used | `chain/src/pay.ts`, `chain/src/types.ts` |
-| Mirror Node REST reads (account exists, balance, transaction lookup) | **queued** | needs no key at all — the one genuine Hedera depth item that a stranger can re-run with zero credentials |
+| Mirror Node REST reads (account exists, balance, transaction lookup) | used | `chain/src/mirror.ts`; live in `chain/test/mirror.live.test.ts`, transcript `chain/evidence/mirror-no-credentials.txt` — zero credentials |
+| Consensus-verified settlement: a receipt is checked against the mirror node, not believed | used | `chain/src/mirror.ts` `confirmTransfer` + `disagreement`; **H-4/H-5** |
+| Both transaction-id forms (`0.0.1@…` SDK form and the `-` REST/HashScan form) | used | `chain/src/mirror.ts` `toHashScanTxId` — the id we hold comes in the form the REST API does not accept |
+| Entity-range and never-allocated account ids distinguished from empty accounts | used | `chain/src/mirror.ts`; a 404 and a malformed id are different facts |
+| Consensus checks exposed to an agent host as a tool | used | `surface/src/mcp.ts` `verify_settlement`; unconfigured reader errors rather than reporting a false disagreement |
 | An actual settled transfer on testnet | **blocked** | free faucet key; **H-1/H-2** |
 | Token (HTS) assets alongside HBAR | unused | the demo prices in HBAR; adding a token would broaden the asset column without changing what is being proven, and the settlement it depends on is blocked anyway |
 | Hedera Consensus Service (HCS) as an audit log of grants | unused | needs a key, same block as H-1; and an audit topic duplicates `RESULTS.md` rather than adding a claim |
 | Smart Contract Service | unused, by decision | ADR-0002: x402 settles a plain `TransferTransaction` and cannot call a contract, so onchain enforcement is off the critical path — declining this is the design, not a shortfall |
 
-Honest count: eleven capabilities used, one queued, one blocked on a free key, three declined with
-reasons. The blocked row is the expensive one — it is the row a judge on this track looks for first.
+Honest count: sixteen capabilities used, one blocked on a free key, three declined with reasons. The
+blocked row is the expensive one — it is the row a judge on this track looks for first, and it is
+still empty.
 
 ## ENS
 
@@ -45,7 +50,10 @@ reasons. The blocked row is the expensive one — it is the row a judge on this 
 | `addr` records → an agent's payout address | used | `chain/src/ens.ts` `resolveAddress`; **E-1** live on Sepolia |
 | `text` records → agent metadata / vouches | used | `chain/src/ens.ts` `resolveText`, `vouchesFor` |
 | Three-state resolution (`ok` / `unset` / `unresolvable`) | used | `chain/src/ens.ts`; a never-registered name and a *cleared* record are different facts, and a cleared record is what a revocation looks like from outside — **E-2** |
-| Reverse resolution (address → primary name) | **queued** | read-side, free, and it closes the loop: the surface can name the agent that is paying instead of printing an account id |
+| Reverse resolution (address → primary name) | used | `chain/src/reverse.ts` `primaryName`; live on Sepolia, **E-4** |
+| Forward-confirmed reverse (the name must point back at the address) | used | `chain/src/reverse.ts` `mutualIdentity` — an unverified reverse record is a claim, not an identity |
+| ENSIP-19 chain-specific reverse namespaces (`evmCoinType`, not just coinType 60) | used | `chain/src/reverse.ts`; a name set for mainnet and one set for Sepolia are different records |
+| Universal Resolver custom errors decoded by selector (`ResolverNotFound(bytes)`, DNS-decoded payload) | used | `chain/src/reverse.ts` — a revert becomes a named outcome (`no-forward-resolver`, `address-mismatch`, `none`) instead of a crash; **E-5** |
 | Publishing a revocation onchain (write to a resolver) | **blocked** | funded Sepolia account; **E-3**, and we do not say "published onchain" until a transaction exists |
 | Registering the demo agents' own `.eth` names | **blocked** | same faucet; the demo currently resolves names it does not own, which is a read-only demo by necessity |
 | ENSIP-16 metadata / offchain (CCIP-read) names | unused | interesting but it proves the resolver's feature, not our claim |
@@ -59,15 +67,34 @@ Dhruv's behalf (ADR-0004).
 |---|---|
 | bazantic.com account + username in the submission | **blocked** — human |
 | x402 / MPP gateway | blocked behind the account |
-| MCP server exposing our API | blocked behind the account — and per ADR-0005 G-3 this is the single highest-value remaining build in the repo if the account appears, because authoring a tool surface is the depth signal we were short of last time |
+| MCP server exposing our API | **built, but not on their platform** — `surface/src/mcp.ts` (six tools, stdio entrypoint `surface/scripts/mcp.ts`); it satisfies ADR-0005 G-3 as *our* depth signal, and satisfies none of Bazantic's requirements, which are about their gateway and their Recipe |
 | A Recipe (when/why/how to use the service) | blocked behind the account |
 | Same task twice, identical prompt/model/settings, Recipe as the only difference | blocked behind the account |
 | Repeatable improvement, both arms published (including the arm that did worse) | blocked behind the account |
 | Video walkthrough of the difference | blocked behind the account |
 
-Current honest score on this sponsor: zero of seven. Either the account exists and we build the
+Current honest score on this sponsor: zero of seven — the MCP row is built but unregistered, and an
+unregistered server scores nothing on a track that measures the platform. Either the account exists and we build the
 other six, or Bazantic is dropped and the submission says so in the same words — ADR-0004 already
 chose the fallback.
+
+## Our own agent surface (no sponsor)
+
+Not a sponsor track, and listed separately so it cannot be mistaken for one. Per ADR-0005 G-1 the
+axis we lost on last time was breadth of *real* use, and a tool surface is where an agent host
+meets the algebra.
+
+| Capability | Status | Where |
+|---|---|---|
+| MCP tools over the grant algebra (`allowance_tree`, `check_allowance`, `spend`, `delegate`, `revoke_authority`, `verify_settlement`) | used | `surface/src/mcp.ts`; **M-1** |
+| Declared output schemas on every tool, structured results not prose | used | same file — a host parses the refusal, it does not read it |
+| Tool annotations that mean something (`spend` non-idempotent, `revoke_authority` destructive, the questions read-only) | used | same file; a retried `spend` spends twice and the annotation is the only warning |
+| Refusal as a successful result, `isError` reserved for broken tools | used | **M-2** — a model that cannot tell the two apart retries the refusal, which is the loop this project exists to stop |
+| Server-side re-authorisation (`spend` never trusts the client's preflight) | used | **M-3** |
+| Protocol-level tests over the SDK's in-memory transport, not hand-rolled fakes | used | `surface/test/mcp.test.ts` |
+| Amounts as decimal strings across the wire | used | a tinybar cap exceeds `Number.MAX_SAFE_INTEGER`; JSON numbers would silently round it |
+| stdio transport, one grant tree per host session | used | `surface/scripts/mcp.ts` |
+| Remote/HTTP transport, sampling, resources, prompts | unused | the claim is about authority, not about covering the MCP spec |
 
 ## What this table says to the human, in one line
 

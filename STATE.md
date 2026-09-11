@@ -9,7 +9,7 @@ correct behavior, not data loss. If this file and `worklog.md` ever disagree abo
 > **Does not own:** bus mode/merge/lanes — that's `docs/STATE.md`, design-owned (Devin, via
 > `claim/state`). Don't put lane rows or `mode:`/`merge:` here; don't put project narrative there.
 
-**Last updated:** 2026-08-31 (design node) — all three lanes merged; what remains is credentials and submission text
+**Last updated:** 2026-08-31 (design node) — credential-free depth landed (mirror-node verification, ENS reverse, MCP server); what remains is credentials
 
 ## Deadline + time remaining
 
@@ -36,10 +36,23 @@ correct behavior, not data loss. If this file and `worklog.md` ever disagree abo
   B-1 and B-2 `blocked` and named as such.
 - Demo video **Cut B** (the keyless cut) recorded — `submissions/VIDEO.md` records what is on it and
   what deliberately is not.
+- **Credential-free depth, after ADR-0005's post-mortem of the last loss** — breadth of real
+  sponsor-capability use was the axis we lost on, so three items were built that a stranger can
+  re-run with no keys at all:
+  - **Mirror-node verification** (#24): a settlement is checked against Hedera consensus rather than
+    against the facilitator's receipt, and a false receipt is named as one of four failures
+    (H-4, H-5).
+  - **ENS reverse + mutual identity** (#26): an address's primary name must resolve back to the
+    address, and the Universal Resolver's custom errors are decoded into named outcomes (E-4, E-5).
+  - **An MCP server over the grant algebra** (#28, awaiting merge): six tools, refusals as
+    successful structured results, `spend` re-authorising internally (M-1..M-3). It is ours and
+    unregistered — it is **not** Bazantic qualification.
 
 ## In flight
 
-- Submission text: the repo/video/evidence package and the prior-art credits ADR-0003 requires.
+- #28 (the MCP server) is open and green, awaiting the human merge.
+- Submission text: caught up to the depth work — `RESULTS.md`, `submissions/SPONSOR-DEPTH.md`,
+  `submissions/SUBMISSION.md` now carry H-4/H-5, E-4/E-5 and M-1..M-3.
 - #7 stays open on purpose: its acceptance criterion is a HashScan link, and none exists.
 - #16 stays open for the ENS **write** side (publishing and revoking the vouch record); reads landed.
 
@@ -49,8 +62,9 @@ correct behavior, not data loss. If this file and `worklog.md` ever disagree abo
   video) is `blocked` in `RESULTS.md` and stays there until a key exists.
 - **No funded Sepolia account** → E-3 (revocation published onchain) is not built and not claimed.
 - **No bazantic.com account** → B-1/B-2 impossible; their prize needs an A/B against a Recipe plus a
-  gateway, an MCP server and a username (ADR-0004). Either that account exists or we submit to two
-  sponsors and say so.
+  gateway, an MCP server *registered on their platform* and a username (ADR-0004). Our own MCP
+  server exists and changes none of that. Either that account exists or we submit to two sponsors
+  and say so.
 - **Q-0001 (event identity) and the rest of `COMPETITION.md` are still `TODO(Dhruv)`** — LOCKED, and
   nobody else may fill them. This no longer blocks building, but it does block submission: there is
   no confirmed deadline in writing.

@@ -43,6 +43,22 @@ no Base funding. Open question, small and non-blocking: whether a *registered ga
 to the CLI) can carry upstream auth to an origin demanding x402 on a non-Base chain. That is a
 question for the sponsor's Discord, not a spike — record the answer here when it arrives.
 
+## The MCP server (ours, not Bazantic's)
+
+`surface/src/mcp.ts` exposes the grant algebra as tools so an agent host — not our demo script —
+holds the authority. It is unregistered on any platform and confers no Bazantic qualification.
+
+- Every tool is a thin call into `@ehl/core`; the hard rule below applies unchanged.
+- A **policy refusal is a successful tool call** carrying `{ allowed: false, reason }` with core's
+  `Reason` verbatim. `isError` is reserved for a tool that actually broke (bad arguments, no mirror
+  reader configured). A host that conflates the two retries a refusal, which is the failure mode
+  this project exists to prevent.
+- Spending tools re-authorise internally. `check_allowance` is a planning aid, never a permission.
+- Amounts cross the boundary as decimal strings: a tinybar cap exceeds `Number.MAX_SAFE_INTEGER`.
+- Every tool declares an output schema, and annotations must be true (`spend` is not idempotent;
+  `revoke_authority` is destructive and idempotent; the questions are read-only).
+- Protocol tests drive a real server through the SDK's in-memory transport; no hand-written fakes.
+
 ## Hard rules
 
 - **No authorization logic here.** Ask `core/` (`authorize`/`consume`), settle via `chain/`. If
