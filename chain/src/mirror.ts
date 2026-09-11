@@ -29,6 +29,8 @@ export type AccountFacts = {
   evmAddress?: string;
   /** Key algorithm, e.g. `ED25519` or `ECDSA_SECP256K1`. */
   keyType?: string;
+  /** The account's public key, raw hex, as consensus holds it. */
+  publicKeyHex?: string;
 };
 
 /** One transaction as consensus recorded it. */
@@ -80,7 +82,7 @@ export async function accountFacts(
     deleted?: boolean;
     balance?: { balance?: number | string };
     evm_address?: string | null;
-    key?: { _type?: string } | null;
+    key?: { _type?: string; key?: string } | null;
   };
 
   return {
@@ -89,6 +91,7 @@ export async function accountFacts(
     balanceTinybar: BigInt(body.balance?.balance ?? 0),
     ...(body.evm_address ? { evmAddress: body.evm_address } : {}),
     ...(body.key?._type ? { keyType: body.key._type } : {}),
+    ...(body.key?.key ? { publicKeyHex: body.key.key.toLowerCase() } : {}),
   };
 }
 

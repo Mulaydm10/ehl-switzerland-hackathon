@@ -2,9 +2,10 @@ import { wrapFetchWithPayment, x402Client, decodePaymentResponseHeader } from "@
 import type { PaymentRequired, PaymentRequirements } from "@x402/fetch";
 import type { SettleResponse } from "@x402/core/types";
 import { encodePaymentSignatureHeader } from "@x402/core/http";
-import { ExactHederaScheme, createClientHederaSigner, PrivateKey, HEDERA_TESTNET_CAIP2 } from "@x402/hedera";
+import { ExactHederaScheme, createClientHederaSigner, PrivateKey, HEDERA_TESTNET_CAIP2, HBAR_ASSET_ID } from "@x402/hedera";
 import type { ClientHederaSigner } from "@x402/hedera";
 import { hashScanUrl } from "./hashscan.js";
+import { accountFacts, HEDERA_TESTNET_MIRROR, type Fetcher } from "./mirror.js";
 import { PaymentError, type Settlement } from "./types.js";
 
 /**
@@ -28,32 +29,119 @@ export function createTestnetSigner(accountId: string, privateKey: string): Clie
   return createClientHederaSigner(accountId, parsePrivateKey(privateKey));
 }
 
+/** A way the same 32 bytes could be read, and the key that reading produces. */
+export type KeyCandidate = { encoding: "DER" | "ECDSA" | "ED25519"; key: PrivateKey };
+
 /**
- * Parses a payer key without making the operator guess its encoding.
+ * Every reading of a payer key that is not obviously wrong.
  *
- * Hedera portal hands out DER for some accounts and raw hex for others, and
- * ECDSA and ED25519 are both in use on testnet. Trying each in turn costs
- * nothing and removes a failure that looks like a bad key but is a bad parser.
+ * A bare 32-byte hex string is genuinely ambiguous: the same bytes are a valid
+ * secp256k1 scalar and a valid ed25519 seed, and they yield *different* public
+ * keys. DER is only attempted when the bytes actually carry a DER prefix,
+ * because `fromStringDer` does not reject bare hex — it silently returns an
+ * ED25519 key. Guessing there is how a correct key becomes `INVALID_SIGNATURE`
+ * at consensus, after the transfer has already been signed and submitted.
  */
-export function parsePrivateKey(privateKey: string): PrivateKey {
-  const attempts: Array<(k: string) => PrivateKey> = [
-    PrivateKey.fromStringDer,
-    PrivateKey.fromStringECDSA,
-    PrivateKey.fromStringED25519,
-  ];
-  for (const parse of attempts) {
+export function privateKeyCandidates(privateKey: string): KeyCandidate[] {
+  const hex = privateKey.replace(/^0x/i, "");
+  const looksDer = hex.length > 64 && hex.startsWith("30");
+  // Called through arrows: these statics use `this`, so an unbound reference throws.
+  const attempts: Array<[KeyCandidate["encoding"], (k: string) => PrivateKey]> = looksDer
+    ? [["DER", (k) => PrivateKey.fromStringDer(k)]]
+    : [
+        ["ECDSA", (k) => PrivateKey.fromStringECDSA(k)],
+        ["ED25519", (k) => PrivateKey.fromStringED25519(k)],
+      ];
+
+  const candidates: KeyCandidate[] = [];
+  for (const [encoding, parse] of attempts) {
     try {
-      return parse(privateKey);
+      candidates.push({ encoding, key: parse(privateKey) });
     } catch {
       continue;
     }
   }
-  throw new PaymentError("HEDERA_PRIVATE_KEY is not parseable as DER, ECDSA or ED25519", "bad_private_key");
+  return candidates;
 }
 
-/** An x402 client that can pay `exact` on Hedera testnet and nothing else. */
-export function createTestnetClient(signer: ClientHederaSigner): x402Client {
-  return new x402Client().register(HEDERA_TESTNET_CAIP2, new ExactHederaScheme(signer));
+/**
+ * Parses a payer key without making the operator guess its encoding.
+ *
+ * Offline, so an ambiguous bare hex key resolves to the first reading that
+ * parses. `signerForAccount` removes the ambiguity by asking consensus; prefer
+ * it wherever the account id is known.
+ */
+export function parsePrivateKey(privateKey: string): PrivateKey {
+  const candidate = privateKeyCandidates(privateKey)[0];
+  if (!candidate) {
+    throw new PaymentError("HEDERA_PRIVATE_KEY is not parseable as DER, ECDSA or ED25519", "bad_private_key");
+  }
+  return candidate.key;
+}
+
+/**
+ * Builds a signer whose public key consensus agrees belongs to the account.
+ *
+ * The mirror node publishes each account's public key, so the encoding does not
+ * have to be guessed and a mismatched key is caught *before* a transfer is
+ * signed rather than as an `INVALID_SIGNATURE` receipt afterwards.
+ */
+export async function signerForAccount(
+  accountId: string,
+  privateKey: string,
+  mirrorUrl: string = HEDERA_TESTNET_MIRROR,
+  fetcher?: Fetcher,
+): Promise<ClientHederaSigner> {
+  const candidates = privateKeyCandidates(privateKey);
+  if (candidates.length === 0) {
+    throw new PaymentError("HEDERA_PRIVATE_KEY is not parseable as DER, ECDSA or ED25519", "bad_private_key");
+  }
+
+  const facts = await accountFacts(accountId, mirrorUrl, fetcher);
+  if (!facts) throw new PaymentError(`consensus has no account ${accountId}`, "unknown_payer_account");
+
+  const expected = facts.publicKeyHex;
+  if (expected === undefined) {
+    throw new PaymentError(`consensus publishes no public key for ${accountId}`, "payer_key_unknown");
+  }
+
+  const match = candidates.find((c) => c.key.publicKey.toStringRaw().toLowerCase() === expected);
+  if (!match) {
+    throw new PaymentError(
+      `HEDERA_PRIVATE_KEY does not control ${accountId}: consensus holds ${facts.keyType ?? "a key"} ${expected}`,
+      "payer_key_mismatch",
+      candidates.map((c) => `${c.encoding}:${c.key.publicKey.toStringRaw()}`).join(" "),
+    );
+  }
+  return createClientHederaSigner(accountId, match.key);
+}
+
+/**
+ * An x402 client that can pay `exact` on Hedera testnet and nothing else.
+ *
+ * Native HBAR has to be declared. `@x402/core`'s spend controls allow only the
+ * assets a scheme calls default, and `@x402/hedera`'s default set is USDC alone
+ * — so an undeclared HBAR price is refused client-side, before signing, as
+ * "only default assets ... are allowed". The declaration carries an *atomic*
+ * per-payment cap (tinybars, not dollars): a ceiling the payer imposes on
+ * itself, independent of the allowance the resource server enforces. Two
+ * ceilings, two enforcers; either one refusing is enough.
+ */
+export function createTestnetClient(
+  signer: ClientHederaSigner,
+  maxTinybarPerPayment?: string,
+): x402Client {
+  return new x402Client()
+    .register(HEDERA_TESTNET_CAIP2, new ExactHederaScheme(signer))
+    .setSpendControls({
+      allowedAssets: [
+        {
+          network: HEDERA_TESTNET_CAIP2,
+          asset: HBAR_ASSET_ID,
+          ...(maxTinybarPerPayment === undefined ? {} : { maxAmountPerPayment: maxTinybarPerPayment }),
+        },
+      ],
+    });
 }
 
 /**

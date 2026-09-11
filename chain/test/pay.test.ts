@@ -1,7 +1,8 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { encodePaymentResponseHeader } from "@x402/core/http";
-import { payUrl, selectHederaRequirement, settlementFrom, settlementOf } from "../src/pay.js";
+import { createTestnetClient, createTestnetSigner, payUrl, selectHederaRequirement, settlementFrom, settlementOf } from "../src/pay.js";
+import { PrivateKey } from "@x402/hedera";
 import { buildRequirements } from "../src/settle.js";
 import { PaymentError } from "../src/types.js";
 import { feePayerFor, feePayerMismatch } from "../src/supported.js";
@@ -114,4 +115,36 @@ test("turns a facilitator settle response into linkable evidence", () => {
     payer: "0.0.1234",
   } as never);
   assert.equal(settlement.explorerUrl, "https://hashscan.io/testnet/transaction/0.0.1234-1699999999-000000000");
+});
+
+/**
+ * Native HBAR is not a default asset anywhere in `@x402/*`: the Hedera scheme's
+ * default set is USDC only, so an HBAR price is refused client-side unless the
+ * client declares it. These three cases are the whole of that behaviour —
+ * declared and uncapped, declared within the payer's own cap, and declared but
+ * dearer than the payer is willing to pay.
+ */
+const hbar402 = {
+  x402Version: 2,
+  accepts: [{ ...hederaRequirement, extra: { feePayer: "0.0.3" } }],
+  resource: { url: "https://example.invalid/paid" },
+} as never;
+
+const offlineSigner = createTestnetSigner("0.0.1", PrivateKey.generateECDSA().toStringRaw());
+
+test("pays an HBAR quote the client has declared", async () => {
+  const payload = await createTestnetClient(offlineSigner).createPaymentPayload(hbar402);
+  assert.equal(payload.x402Version, 2);
+});
+
+test("pays an HBAR quote at or under the payer's own tinybar cap", async () => {
+  const payload = await createTestnetClient(offlineSigner, "250000").createPaymentPayload(hbar402);
+  assert.equal(payload.x402Version, 2);
+});
+
+test("refuses a quote above the payer's own cap before signing anything", async () => {
+  await assert.rejects(
+    createTestnetClient(offlineSigner, "50000").createPaymentPayload(hbar402),
+    /maxAmountPerPayment/,
+  );
 });
