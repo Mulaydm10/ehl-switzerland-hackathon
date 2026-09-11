@@ -23,3 +23,11 @@
 {"status":403,"body":{"reason":"REVOKED","settled":false,"grant":"child-a"},"grants":[{"id":"parent","child":"parent","parent":null,"limit":"1000000","spent":"100000","remaining":"900000","revoked":false},{"id":"child-a","child":"agent-a","parent":"parent","limit":"300000","spent":"100000","remaining":"0","revoked":true},{"id":"child-b","child":"agent-b","parent":"parent","limit":"300000","spent":"0","remaining":"300000","revoked":false},{"id":"child-c","child":"agent-c","parent":"parent","limit":"150000","spent":"0","remaining":"150000","revoked":false}]}
 == DEMO-0004 sibling child-b is untouched
 {"status":200,"body":{"result":{"translated":"DELEGATED AGENTS SHOULD NOT NEED A SHARED WALLET"},"settlement":{"transactionId":"0.0.7162784@1789123079.476986776","explorerUrl":"https://hashscan.io/testnet/transaction/0.0.7162784-1789123079-476986776","network":"hedera:testnet"}},"grants":[{"id":"parent","child":"parent","parent":null,"limit":"1000000","spent":"200000","remaining":"800000","revoked":false},{"id":"child-a","child":"agent-a","parent":"parent","limit":"300000","spent":"100000","remaining":"0","revoked":true},{"id":"child-b","child":"agent-b","parent":"parent","limit":"300000","spent":"100000","remaining":"200000","revoked":false},{"id":"child-c","child":"agent-c","parent":"parent","limit":"150000","spent":"0","remaining":"150000","revoked":false}]}
+
+== the dearer route, paid from the parent grant (250000 tinybar, not a fixed unit)
+# `POST /demo/pay?grant=parent&route=/summarize` — 250000 tinybar quoted and 250000 settled,
+# which is what separates "we can pay" from "we pay the amount we quoted".
+# https://hashscan.io/testnet/transaction/0.0.7162784-1789126246-747821785
+# consensus: SUCCESS, 0.0.10328195 -0.0025 HBAR, 0.0.10472555 +0.0025 HBAR, fee 270012 paid by
+# 0.0.7162784; `disagreement()` returns none.
+{"status":200,"body":{"result":{"summary":"delegated agents should not need a shared wallet"},"settlement":{"transactionId":"0.0.7162784@1789126246.747821785","explorerUrl":"https://hashscan.io/testnet/transaction/0.0.7162784-1789126246-747821785","network":"hedera:testnet"}},"grants":[{"id":"parent","child":"parent","parent":null,"limit":"1000000","spent":"250000","remaining":"750000","revoked":false}]}
