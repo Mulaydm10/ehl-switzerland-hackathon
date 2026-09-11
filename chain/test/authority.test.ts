@@ -125,7 +125,7 @@ test("revocation is the grant call with one bit flipped", () => {
   const b = abi.decodeFunctionData("authorizeTextRoles", revoke.data);
 
   assert.equal(grant.signature, revoke.signature);
-  assert.deepEqual(a.slice(0, 3), b.slice(0, 3));
+  assert.deepEqual(a.slice(0, 3).map(String), b.slice(0, 3).map(String));
   assert.equal(a[3], true);
   assert.equal(b[3], false);
 });
