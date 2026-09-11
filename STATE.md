@@ -32,8 +32,14 @@ correct behavior, not data loss. If this file and `worklog.md` ever disagree abo
   `chain/` (#12) Hedera x402 settlement through Blocky402 plus a direct `POST /settle` path;
   `surface/` (#14) two differently-priced x402 routes, quote-time authorisation, browser demo;
   ENS read-side resolution live on Sepolia (#17).
-- **`RESULTS.md` is the claim ledger** (#19): C-1..C-4 proven without any credentials; H-1, H-2, E-3,
-  B-1 and B-2 `blocked` and named as such.
+- **`RESULTS.md` is the claim ledger** (#19): C-1..C-4 proven without any credentials; H-1, H-2 now
+  proven on testnet; E-3, B-1 and B-2 `blocked` and named as such.
+- **HBAR has moved** (2026-09-11, with a temporary key that is to be rotated): three settlements, 100 000 tinybar
+  for `child-a` and for sibling `child-b`, 250 000 for the dearer route, `0.0.10328195 →
+  0.0.10472555`, each agreed with by consensus (H-1, H-2, and the settling half of C-4). The first
+  attempt failed `INVALID_SIGNATURE` because a bare-hex ECDSA key also parses as a valid ED25519
+  key; the signer now matches itself against the account's published key before signing (#31, H-6),
+  and the payer declares HBAR to x402 with its own per-payment ceiling (#33, H-7).
 - Demo video **Cut B** (the keyless cut) recorded — `submissions/VIDEO.md` records what is on it and
   what deliberately is not.
 - **Credential-free depth, after ADR-0005's post-mortem of the last loss** — breadth of real
@@ -44,22 +50,24 @@ correct behavior, not data loss. If this file and `worklog.md` ever disagree abo
     (H-4, H-5).
   - **ENS reverse + mutual identity** (#26): an address's primary name must resolve back to the
     address, and the Universal Resolver's custom errors are decoded into named outcomes (E-4, E-5).
-  - **An MCP server over the grant algebra** (#28, awaiting merge): six tools, refusals as
+  - **An MCP server over the grant algebra** (#28): six tools, refusals as
     successful structured results, `spend` re-authorising internally (M-1..M-3). It is ours and
     unregistered — it is **not** Bazantic qualification.
 
 ## In flight
 
-- #28 (the MCP server) is open and green, awaiting the human merge.
+- #33 (the demo payer's consensus-checked key and self-imposed ceiling) is open and green, awaiting
+  the human merge; #31 (the chain half) is merged.
 - Submission text: caught up to the depth work — `RESULTS.md`, `submissions/SPONSOR-DEPTH.md`,
   `submissions/SUBMISSION.md` now carry H-4/H-5, E-4/E-5 and M-1..M-3.
-- #7 stays open on purpose: its acceptance criterion is a HashScan link, and none exists.
+- #7 can be closed: its acceptance criterion was a HashScan link, and three exist.
 - #16 stays open for the ENS **write** side (publishing and revoking the vouch record); reads landed.
 
 ## Blocked
 
-- **No Hedera testnet key.** Every settlement claim (H-1, H-2, the settling half of C-4, Cut A of the
-  video) is `blocked` in `RESULTS.md` and stays there until a key exists.
+- **No Hedera testnet key *now*.** The one used on 2026-09-11 was temporary and is being rotated, so
+  the recorded transaction ids stay verifiable but re-running a paying scenario (or recording Cut A
+  of the video) needs a fresh key. Every refusal and every mirror-node row still needs none.
 - **No funded Sepolia account** → E-3 (revocation published onchain) is not built and not claimed.
 - **No bazantic.com account** → B-1/B-2 impossible; their prize needs an A/B against a Recipe plus a
   gateway, an MCP server *registered on their platform* and a username (ADR-0004). Our own MCP

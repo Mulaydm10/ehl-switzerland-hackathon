@@ -32,14 +32,16 @@ Nothing here upgrades a claim. Evidence lives in `RESULTS.md` and this file may 
 | Both transaction-id forms (`0.0.1@…` SDK form and the `-` REST/HashScan form) | used | `chain/src/mirror.ts` `toHashScanTxId` — the id we hold comes in the form the REST API does not accept |
 | Entity-range and never-allocated account ids distinguished from empty accounts | used | `chain/src/mirror.ts`; a 404 and a malformed id are different facts |
 | Consensus checks exposed to an agent host as a tool | used | `surface/src/mcp.ts` `verify_settlement`; unconfigured reader errors rather than reporting a false disagreement |
-| An actual settled transfer on testnet | **blocked** | free faucet key; **H-1/H-2** |
-| Token (HTS) assets alongside HBAR | unused | the demo prices in HBAR; adding a token would broaden the asset column without changing what is being proven, and the settlement it depends on is blocked anyway |
-| Hedera Consensus Service (HCS) as an audit log of grants | unused | needs a key, same block as H-1; and an audit topic duplicates `RESULTS.md` rather than adding a claim |
+| An actual settled transfer on testnet | used | three of them, 100 000 ×2 and 250 000 tinybar, `0.0.10328195 → 0.0.10472555`; **H-1/H-2**, transcript `surface/evidence/live-settlement-run.txt` |
+| A payer key proved against the key the account publishes, before signing | used | `chain/src/pay.ts` `signerForAccount` — bare hex is a valid ECDSA *and* ED25519 key, and the wrong reading settles as `INVALID_SIGNATURE` with the fee already paid; **H-6** |
+| Native HBAR declared through x402 spend controls, with a payer-side per-payment ceiling | used | `chain/src/pay.ts` `createTestnetClient` — `@x402/hedera`'s default asset set is USDC, so an HBAR price is refused client-side until declared; **H-7** |
+| Token (HTS) assets alongside HBAR | unused | the demo prices in HBAR; adding a token broadens the asset column without changing what is being proven — the allowance algebra is already asset-keyed |
+| Hedera Consensus Service (HCS) as an audit log of grants | unused | an audit topic duplicates `RESULTS.md` rather than adding a claim; the grant tree's authority is the resource server, not a topic |
 | Smart Contract Service | unused, by decision | ADR-0002: x402 settles a plain `TransferTransaction` and cannot call a contract, so onchain enforcement is off the critical path — declining this is the design, not a shortfall |
 
-Honest count: sixteen capabilities used, one blocked on a free key, three declined with reasons. The
-blocked row is the expensive one — it is the row a judge on this track looks for first, and it is
-still empty.
+Honest count: nineteen capabilities used, none blocked, three declined with reasons. The row a judge
+on this track looks for first — a settled transfer — is filled, by three transaction ids that
+consensus agrees with. The key used was a throwaway and is being rotated; the ids outlive it.
 
 ## ENS
 
@@ -98,6 +100,9 @@ meets the algebra.
 
 ## What this table says to the human, in one line
 
-Two free credentials — a Hedera testnet key and a Sepolia faucet — convert four `blocked` rows into
-`used`, and they are the same class of gap that cost us the last hackathon (ADR-0005 G-2). The third
-gap, Bazantic, needs an account and nothing else.
+One free credential — a Sepolia faucet — converts the remaining ENS write row from `blocked` into
+evidence; the Hedera key that unblocked H-1/H-2 has already been used, and is being rotated.
+
+A free credential left unclaimed is the same class of gap that cost us the last hackathon
+(ADR-0005 G-2); one of the two is now closed. The remaining gap, Bazantic, needs an account and
+nothing else.

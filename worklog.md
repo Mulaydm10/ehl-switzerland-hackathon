@@ -63,3 +63,27 @@ references and adds the MCP surface in its own section, explicitly *not* under B
 Nothing here upgrades a blocked row. H-1/H-2 (no HBAR has moved), E-3 (no onchain ENS write) and
 B-1/B-2 (no bazantic.com account) are unchanged, and the MCP server is written down everywhere as
 ours and unregistered so it cannot be mistaken for Bazantic qualification.
+
+## 2026-09-11 10:30 UTC — HBAR moved, and the key that nearly didn't work
+
+A temporary Hedera testnet account arrived, so the settling claims were run rather than described.
+Three settlements through the demo surface: `child-a` paying 100 000 tinybar for `/translate`, its
+sibling `child-b` paying the same after `child-a` was revoked, and 250 000 for the dearer
+`/summarize` route — each `0.0.10328195 → 0.0.10472555`, each checked afterwards against consensus
+by our own mirror-node reader, which disagreed with none of them. H-1, H-2 and the settling half of
+C-4 leave `blocked`.
+
+The first attempt failed `INVALID_SIGNATURE`, which is the interesting part. A bare 32-byte hex
+string is a valid ECDSA secp256k1 key *and* a valid ED25519 key, with different public keys and no
+error from the SDK for the wrong reading — so the signer was signing correctly for an account it did
+not control. The fix is not a better guess: `signerForAccount` derives both candidates, asks the
+mirror node which public key the account actually publishes, and refuses (`payer_key_mismatch`,
+`unknown_payer_account`, `payer_key_unknown`) before building a transaction. That is H-6. Separately
+native HBAR is not in `@x402/hedera`'s default allowed assets, so the client declares `0.0.0`
+explicitly and now also carries its own per-payment ceiling, independent of the server's grant
+allowance — H-7.
+
+The key was temporary and is being rotated; the transaction ids stay verifiable on HashScan without
+it, but re-running a paying scenario (or Cut A of the video) needs a fresh one. Still blocked and
+still not claimed: E-3 (funded Sepolia), B-1/B-2 (bazantic.com account), `COMPETITION.md`, and the
+public-repo flip.
