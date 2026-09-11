@@ -2,10 +2,13 @@ export {
   payForRequest,
   payUrl,
   createTestnetSigner,
+  signerForAccount,
+  privateKeyCandidates,
   createTestnetClient,
   selectHederaRequirement,
   settlementFrom,
   settlementOf,
+  type KeyCandidate,
 } from "./pay.js";
 export { settleDirect, buildRequirements, X402_VERSION, type DirectSettleRequest } from "./settle.js";
 export { loadChainEnv } from "./env.js";

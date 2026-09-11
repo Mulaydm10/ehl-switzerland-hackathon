@@ -48,7 +48,7 @@ test("account facts carry the balance as tinybars, and deletion as a fact of its
         deleted: false,
         balance: { balance: 29055359989622 },
         evm_address: "0xc7a05f74a48f936cc3ed5a908f815471523545ad",
-        key: { _type: "ECDSA_SECP256K1" },
+        key: { _type: "ECDSA_SECP256K1", key: "035D04915C9E2F479D4A342164E90872C986F62019AC72A4632D98671848EBF002" },
       },
     },
   });
@@ -57,6 +57,9 @@ test("account facts carry the balance as tinybars, and deletion as a fact of its
   assert.equal(facts?.deleted, false);
   assert.equal(facts?.balanceTinybar, 29055359989622n);
   assert.equal(facts?.keyType, "ECDSA_SECP256K1");
+  // Lower-cased on the way in: it is compared against a derived key, and the
+  // mirror node is not consistent about case.
+  assert.equal(facts?.publicKeyHex, "035d04915c9e2f479d4a342164e90872c986f62019ac72a4632d98671848ebf002");
   assert.match(facts?.evmAddress ?? "", /^0x[0-9a-f]{40}$/);
 });
 

@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { loadChainEnv } from "../src/env.js";
-import { createTestnetSigner } from "../src/pay.js";
+import { signerForAccount } from "../src/pay.js";
 import { settleDirect } from "../src/settle.js";
 import { fetchSupported, feePayerFor } from "../src/supported.js";
 
@@ -35,7 +35,7 @@ test("facilitator advertises an exact/hedera-testnet kind", { skip: facilitatorU
 });
 
 test("settles a real transfer through the facilitator and returns a HashScan link", { skip: skipPayment }, async () => {
-  const signer = createTestnetSigner(accountId!, privateKey!);
+  const signer = await signerForAccount(accountId!, privateKey!);
   const { settlement } = await settleDirect(
     {
       facilitatorUrl: facilitatorUrl!,
