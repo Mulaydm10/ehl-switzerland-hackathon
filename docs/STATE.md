@@ -67,6 +67,17 @@ a broken baseline. Design cannot pre-create those files: CI confines `design/*` 
 - Actions minutes are one pool per repo; check quota before a team event.
 
 ## Log
+- 2026-09-11: a Hedera testnet key existed for one afternoon and HBAR moved: three settlements
+  through the demo surface (100 000 tinybar for `child-a` and again for sibling `child-b`, 250 000
+  for the dearer route), each verified against consensus by our own mirror-node reader, which
+  disagreed with none. H-1/H-2 and the settling half of C-4 leave `blocked`; H-6 (the signer proves
+  itself against the account's published key) and H-7 (HBAR declared to x402 plus a payer-side
+  per-payment ceiling) are new rows. The first attempt failed `INVALID_SIGNATURE` because a bare-hex
+  ECDSA key is *also* a valid ED25519 key with a different public key — worth remembering, since the
+  SDK reports no error for the wrong reading. Key was temporary and is being rotated; the ids
+  outlive it. **Protocol deviation to record:** #31 and #33 are lane PRs authored by the design node
+  again, for the same reason as #24/#26/#28 — no worker session was live — so the human merge is the
+  only review.
 - 2026-08-31: credential-free sponsor depth, cut from ADR-0005's post-mortem: mirror-node
   consensus verification of a settlement (#24, `claim/23` deleted, #23 closed), ENS reverse +
   mutual identity (#26, `claim/25` deleted, #25 closed), and an MCP server over the grant algebra
